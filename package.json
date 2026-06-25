@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node test/handler.test.js && node test/normalize.test.js"
+    "worker": "node src/worker.js",
+    "test": "node test/handler.test.js && node test/normalize.test.js && node test/rules.test.js && node test/matcher.test.js && node test/enqueue.test.js && node test/judge.test.js && node test/trigger.test.js && node test/dryRun.test.js && node test/workerCore.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
