@@ -93,9 +93,14 @@ async function main() {
     await processEvent(event);
   });
 
+  // 只向伺服器訂閱指定房間的 room 事件(節省傳輸)。
+  // to_device 是 sync 頂層欄位,不受 room filter 影響,E2EE 金鑰交換正常。
+  const roomFilter = new sdk.Filter(session.userId);
+  roomFilter.setDefinition({ room: { rooms: config.roomIds } });
+
   // 先啟動 sync 並等 PREPARED,讓 crypto 取得自身 identity,再建立信任。
   console.log("[element-bot] 啟動 sync...");
-  await client.startClient({ initialSyncLimit: 1 });
+  await client.startClient({ initialSyncLimit: 1, filter: roomFilter });
   await waitForPrepared(client);
 
   console.log("[element-bot] 用 recovery key 建立裝置信任 + 還原 key backup...");
