@@ -1,0 +1,16 @@
+[
+  {
+    "name": "deploy",
+    "keywords": ["部署", "上線", "deploy"],
+    "task": "deploy-skill",
+    "use_llm": true,
+    "intent": "有人要求部署或詢問上線流程時才觸發;在抱怨或回顧過去的部署、單純閒聊則不要觸發",
+    "extract": ["環境", "服務名稱"]
+  },
+  {
+    "name": "report",
+    "keywords": ["週報", "report"],
+    "task": "report-skill",
+    "use_llm": false
+  }
+]
