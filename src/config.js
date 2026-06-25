@@ -18,7 +18,6 @@ function loadConfig() {
   const rulesPath = path.resolve(__dirname, "..", process.env.RULES_PATH || "config/rules.json");
   const queueDir = path.resolve(__dirname, "..", process.env.QUEUE_DIR || "queue");
   const pollIntervalMs = parseInt(process.env.POLL_INTERVAL_MS || "2000", 10);
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY || null;
 
   const missing = [];
   if (!homeserver) missing.push("MATRIX_HOMESERVER");
@@ -29,7 +28,7 @@ function loadConfig() {
   if (missing.length) {
     throw new Error(`缺少必要設定: ${missing.join(", ")}（請參考 .env.example）`);
   }
-  return { homeserver, userId, password, recoveryKey, deviceName, roomIds, rulesPath, queueDir, pollIntervalMs, anthropicApiKey };
+  return { homeserver, userId, password, recoveryKey, deviceName, roomIds, rulesPath, queueDir, pollIntervalMs };
 }
 
 module.exports = { loadConfig, parseRoomIds };

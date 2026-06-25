@@ -45,15 +45,9 @@ async function main() {
     console.warn("[element-bot] 規則載入失敗,觸發功能停用:", e.message);
   }
 
-  let anthropic = null;
-  const judgeFn = async (rule, message) => {
-    if (!anthropic) {
-      if (!config.anthropicApiKey) throw new Error("缺少 ANTHROPIC_API_KEY,無法做 LLM 判斷");
-      const Anthropic = require("@anthropic-ai/sdk");
-      anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
-    }
-    return judge(anthropic, rule, message);
-  };
+  // 用 claude CLI(headless）做 LLM 判斷,吃目前登入帳號的 quota,不需 API key。
+  // CLI 不存在/逾時/非零 exit 會丟錯,被 trigger 的 per-rule try/catch 接住 → 該則不觸發,bot 照常。
+  const judgeFn = async (rule, message) => judge(rule, message);
 
   const seen = new Set(); // 以 event_id 去重(timeline 與 Decrypted 可能各觸發一次)
   const startTs = Date.now();
