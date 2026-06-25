@@ -8,6 +8,10 @@ const { pruneOldDevices } = require("./devices");
 const { normalize } = require("./normalize");
 const { shouldCapture, toRecord } = require("./handler");
 const { writeEvent, OUTPUT_FILE } = require("./writer");
+const { loadRules } = require("./rules");
+const { runTriggerPipeline } = require("./trigger");
+const { judge } = require("./judge");
+const { enqueueTask } = require("./enqueue");
 
 // 等待首次 sync 完成(PREPARED),crypto 才會有自己的 public identity 可供建立信任。
 function waitForPrepared(client) {
@@ -33,6 +37,24 @@ async function main() {
     recoveryKey: config.recoveryKey,
   });
 
+  let rules = [];
+  try {
+    rules = loadRules(config.rulesPath);
+    console.log(`[element-bot] 載入 ${rules.length} 條觸發規則`);
+  } catch (e) {
+    console.warn("[element-bot] 規則載入失敗,觸發功能停用:", e.message);
+  }
+
+  let anthropic = null;
+  const judgeFn = async (rule, message) => {
+    if (!anthropic) {
+      if (!config.anthropicApiKey) throw new Error("缺少 ANTHROPIC_API_KEY,無法做 LLM 判斷");
+      const Anthropic = require("@anthropic-ai/sdk");
+      anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
+    }
+    return judge(anthropic, rule, message);
+  };
+
   const seen = new Set(); // 以 event_id 去重(timeline 與 Decrypted 可能各觸發一次)
   const startTs = Date.now();
 
@@ -48,6 +70,16 @@ async function main() {
       seen.add(rec.event_id);
       writeEvent(toRecord(rec.room_id, rec));
       console.log(`[element-bot] 已擷取 ${rec.room_id} <- ${rec.sender}: ${String(rec.content.body).slice(0, 80)}`);
+      try {
+        await runTriggerPipeline(rec, {
+          rules,
+          judgeFn,
+          enqueueFn: (task) => enqueueTask(config.queueDir, task),
+          logger: console,
+        });
+      } catch (err) {
+        console.error("[element-bot] 觸發管線錯誤(不影響擷取):", err.message);
+      }
     } catch (err) {
       console.error("[element-bot] 處理事件錯誤:", err);
     }
