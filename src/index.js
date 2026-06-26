@@ -14,7 +14,14 @@ const { judge } = require("./judge");
 const { enqueueTask } = require("./enqueue");
 const path = require("path");
 const { startHeartbeat } = require("./heartbeat");
-const { writeRoomsSidecar, buildRoomEntries } = require("./roomsSidecar");
+const {
+  writeRoomsSidecar,
+  buildRoomEntries,
+  readRoomsMap,
+  mergeRoomEntries,
+  collectQueueRoomIds,
+  resolveRoomNames,
+} = require("./roomsSidecar");
 
 // 等待首次 sync 完成(PREPARED),crypto 才會有自己的 public identity 可供建立信任。
 function waitForPrepared(client) {
@@ -107,10 +114,16 @@ async function main() {
   await waitForPrepared(client);
 
   const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
-  // 房間名稱 sidecar:PREPARED 後寫一次,之後房間改名時更新。
-  const updateRooms = () => {
+  // 房間名稱 sidecar:累積合併(不覆寫已知名稱),並替佇列中出現、
+  // 但不在當前監聽清單的房間(含歷史任務)補查名稱,讓 dashboard 不顯示裸 room_id。
+  const updateRooms = async () => {
     try {
-      writeRoomsSidecar(STORAGE_DIR, buildRoomEntries(client, config.roomIds));
+      let merged = mergeRoomEntries(readRoomsMap(STORAGE_DIR), buildRoomEntries(client, config.roomIds));
+      const missing = collectQueueRoomIds(config.queueDir).filter((id) => !merged[id] || merged[id] === id);
+      if (missing.length) {
+        merged = mergeRoomEntries(merged, await resolveRoomNames(client, missing));
+      }
+      writeRoomsSidecar(STORAGE_DIR, merged);
     } catch (e) {
       console.warn("[element-bot] 寫 rooms.json 失敗:", e.message);
     }
