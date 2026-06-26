@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node src/index.js",
     "worker": "node src/worker.js",
-    "test": "node test/handler.test.js && node test/normalize.test.js && node test/rules.test.js && node test/matcher.test.js && node test/enqueue.test.js && node test/judge.test.js && node test/trigger.test.js && node test/dryRun.test.js && node test/workerCore.test.js"
+    "dashboard": "node src/dashboard/index.js",
+    "test": "node test/handler.test.js && node test/normalize.test.js && node test/rules.test.js && node test/matcher.test.js && node test/enqueue.test.js && node test/judge.test.js && node test/trigger.test.js && node test/dryRun.test.js && node test/workerCore.test.js && node test/heartbeat.test.js && node test/roomsSidecar.test.js && node test/aggregate.test.js && node test/dashboardServer.test.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

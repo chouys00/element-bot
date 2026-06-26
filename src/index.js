@@ -12,6 +12,9 @@ const { loadRules } = require("./rules");
 const { runTriggerPipeline } = require("./trigger");
 const { judge } = require("./judge");
 const { enqueueTask } = require("./enqueue");
+const path = require("path");
+const { startHeartbeat } = require("./heartbeat");
+const { writeRoomsSidecar, buildRoomEntries } = require("./roomsSidecar");
 
 // 等待首次 sync 完成(PREPARED),crypto 才會有自己的 public identity 可供建立信任。
 function waitForPrepared(client) {
@@ -102,6 +105,20 @@ async function main() {
   console.log("[element-bot] 啟動 sync...");
   await client.startClient({ initialSyncLimit: 1, filter: roomFilter });
   await waitForPrepared(client);
+
+  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
+  // 房間名稱 sidecar:PREPARED 後寫一次,之後房間改名時更新。
+  const updateRooms = () => {
+    try {
+      writeRoomsSidecar(STORAGE_DIR, buildRoomEntries(client, config.roomIds));
+    } catch (e) {
+      console.warn("[element-bot] 寫 rooms.json 失敗:", e.message);
+    }
+  };
+  updateRooms();
+  client.on(sdk.RoomEvent.Name, updateRooms);
+  // 心跳:每 30s 寫一次存活時間戳,供儀表板判斷 bot 是否在線。
+  startHeartbeat(STORAGE_DIR, 30000);
 
   console.log("[element-bot] 用 recovery key 建立裝置信任 + 還原 key backup...");
   await establishTrust(client, { userId: config.userId, password: config.password });
