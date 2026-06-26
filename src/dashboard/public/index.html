@@ -1,1 +1,135 @@
-<!doctype html><meta charset="utf-8"><title>element-bot 監控台</title><p>placeholder</p>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>element-bot 監控台</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: system-ui, "Microsoft JhengHei", sans-serif; background: #16181d; color: #e6e6e6; font-size: 14px; }
+  header { padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2c2f38; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  header .dot { font-weight: bold; }
+  header .counts span { margin-right: 10px; color: #aaa; }
+  main { padding: 16px; }
+  .dev { border: 1px dashed #555; border-radius: 8px; padding: 10px; margin-bottom: 18px; }
+  .dev summary { cursor: pointer; color: #bbb; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2a2d36; vertical-align: top; }
+  th { color: #9aa; font-weight: 600; }
+  .split { display: flex; gap: 14px; }
+  .tasks { flex: 1.5; }
+  .detail { flex: 1; border-left: 1px solid #2a2d36; padding-left: 14px; min-width: 240px; }
+  tr.task { cursor: pointer; }
+  tr.task:hover { background: #1f232b; }
+  tr.task.sel { background: #283041; }
+  .badge { padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; }
+  .pending { background: #9ca3af; } .processing { background: #3b82f6; } .done { background: #22c55e; } .failed { background: #ef4444; }
+  pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+  .muted { color: #777; }
+  .k { color: #889; display: inline-block; min-width: 64px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="botStatus">…</span>
+  <span class="counts" id="counts"></span>
+</header>
+<main>
+  <details class="dev" open>
+    <summary>🔧 監聽訊息（開發用,之後移除）</summary>
+    <table><tbody id="msgs"></tbody></table>
+  </details>
+
+  <div class="split">
+    <div class="tasks">
+      <b>📋 觸發的任務</b>
+      <table>
+        <thead><tr><th>時間</th><th>聊天室</th><th>發送者</th><th>規則 → 任務</th><th>狀態</th></tr></thead>
+        <tbody id="tasks"></tbody>
+      </table>
+    </div>
+    <div class="detail">
+      <b>🔎 任務詳情</b>
+      <div id="detail" class="muted">點選左側任務以檢視詳情與日誌。</div>
+    </div>
+  </div>
+</main>
+
+<script>
+const STATUS_LABEL = { pending: "待處理", processing: "進行中", done: "完成", failed: "失敗" };
+let selectedId = null;
+let lastTasks = [];
+
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function timeOf(t) { return t ? new Date(t).toLocaleTimeString("zh-Hant", { hour12: false }) : "—"; }
+function badge(s) { return `<span class="badge ${s}">${STATUS_LABEL[s] || s}</span>`; }
+
+async function refresh() {
+  try {
+    const [status, tasks, msgs] = await Promise.all([
+      fetch("/api/status").then((r) => r.json()),
+      fetch("/api/tasks").then((r) => r.json()),
+      fetch("/api/messages").then((r) => r.json()),
+    ]);
+    renderStatus(status);
+    renderTasks(tasks);
+    renderMsgs(msgs);
+  } catch (e) {
+    document.getElementById("botStatus").textContent = "🔴 儀表板無法連線";
+  }
+}
+
+function renderStatus(s) {
+  document.getElementById("botStatus").textContent = s.bot_online ? "🟢 bot 連線中" : "🔴 bot 離線";
+  const c = s.counts || {};
+  document.getElementById("counts").innerHTML =
+    `<span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>完成 ${c.done || 0}</span><span>失敗 ${c.failed || 0}</span>`;
+}
+
+function renderMsgs(msgs) {
+  document.getElementById("msgs").innerHTML = (msgs || []).map((m) =>
+    `<tr><td class="muted">${timeOf(m.origin_server_ts)}</td><td>${esc(m.room_id)}</td><td>${esc(m.sender)}</td><td>${esc(m.body)}</td></tr>`
+  ).join("") || `<tr><td class="muted">（尚無訊息）</td></tr>`;
+}
+
+function renderTasks(tasks) {
+  lastTasks = tasks || [];
+  document.getElementById("tasks").innerHTML = lastTasks.map((t) => {
+    if (t.parseError) return `<tr class="task" data-id="${esc(t.id)}"><td colspan="4" class="failed">⚠ 任務檔解析失敗:${esc(t.id)}</td><td>${badge(t.status)}</td></tr>`;
+    return `<tr class="task ${t.id === selectedId ? "sel" : ""}" data-id="${esc(t.id)}">
+      <td class="muted">${timeOf(t.enqueued_at)}</td><td>${esc(t.room_name)}</td><td>${esc(t.sender)}</td>
+      <td>${esc(t.rule)} → ${esc(t.task)}</td><td>${badge(t.status)}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="muted">（尚無觸發的任務）</td></tr>`;
+
+  document.querySelectorAll("tr.task").forEach((tr) => tr.addEventListener("click", () => selectTask(tr.dataset.id)));
+  if (selectedId) renderDetail();
+}
+
+async function selectTask(id) {
+  selectedId = id;
+  document.querySelectorAll("tr.task").forEach((tr) => tr.classList.toggle("sel", tr.dataset.id === id));
+  renderDetail();
+}
+
+async function renderDetail() {
+  const t = lastTasks.find((x) => x.id === selectedId);
+  const box = document.getElementById("detail");
+  if (!t) { box.innerHTML = `<span class="muted">任務已不在列表中。</span>`; return; }
+  let log = { source: "none", text: "（載入中…）" };
+  try { log = await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/log`).then((r) => r.json()); } catch (_) {}
+  const logNote = log.source === "none" ? '<span class="muted">（executor 尚未寫入日誌）</span>' : "";
+  box.innerHTML = `
+    <div><span class="k">狀態</span> ${badge(t.status)}</div>
+    <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
+    <div><span class="k">發送者</span> ${esc(t.sender)}</div>
+    <div><span class="k">規則</span> ${esc(t.rule)} → ${esc(t.task)}</div>
+    <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
+    <div class="k" style="margin-top:8px">日誌 ${logNote}</div>
+    <pre>${esc(log.text)}</pre>`;
+}
+
+refresh();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>
