@@ -60,7 +60,7 @@ const STATUS_LABEL = { pending: "待處理", processing: "進行中", done: "完
 let selectedId = null;
 let lastTasks = [];
 
-function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function timeOf(t) { return t ? new Date(t).toLocaleTimeString("zh-Hant", { hour12: false }) : "—"; }
 function badge(s) { return `<span class="badge ${s}">${STATUS_LABEL[s] || s}</span>`; }
 

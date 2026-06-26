@@ -18,6 +18,8 @@ const ts = readHeartbeat(dir);
 ok("寫入後讀回為數字", typeof ts === "number" && ts > 0);
 ok("讀回值接近現在", Math.abs(Date.now() - ts) < 5000);
 ok("缺檔回 null", readHeartbeat(path.join(dir, "nope")) === null);
+fs.writeFileSync(path.join(dir, "bot-heartbeat"), "corrupt", "utf8");
+ok("壞內容回 null(非 NaN)", readHeartbeat(dir) === null);
 fs.rmSync(dir, { recursive: true, force: true });
 
 console.log(`heartbeat.test.js: ${passed} 項通過 ✅`);

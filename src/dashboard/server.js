@@ -29,7 +29,13 @@ function createServer(deps) {
       }
       const logMatch = p.match(/^\/api\/tasks\/([^/]+)\/log$/);
       if (logMatch) {
-        return sendJson(res, 200, resolveTaskLog(queueDir, decodeURIComponent(logMatch[1])));
+        const id = decodeURIComponent(logMatch[1]);
+        // 防穿越:decodeURIComponent 後的 id 可能含 ../ 或分隔符,擋掉避免讀到 queue 外的檔。
+        if (id.includes("..") || id.includes("/") || id.includes("\\")) {
+          res.writeHead(400);
+          return res.end("bad id");
+        }
+        return sendJson(res, 200, resolveTaskLog(queueDir, id));
       }
       if (p === "/api/messages") {
         return sendJson(res, 200, readMessagesTail(outputFile, MESSAGES_LIMIT));

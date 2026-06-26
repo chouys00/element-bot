@@ -10,7 +10,8 @@ function isFresh(ts, now, maxAgeMs) {
 // 讀心跳檔,回傳毫秒時間戳;檔案不存在/壞掉回 null。
 function readHeartbeat(storageDir) {
   try {
-    return parseInt(fs.readFileSync(path.join(storageDir, "bot-heartbeat"), "utf8").trim(), 10);
+    const ts = parseInt(fs.readFileSync(path.join(storageDir, "bot-heartbeat"), "utf8").trim(), 10);
+    return Number.isNaN(ts) ? null : ts;
   } catch (_) {
     return null;
   }

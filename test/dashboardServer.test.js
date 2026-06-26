@@ -44,6 +44,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const html = await fetch(`${base}/`);
   ok("根路徑回 200", html.status === 200);
 
+  const traversal = await fetch(`${base}/api/tasks/..%2F..%2Fsecret/log`);
+  ok("log 端點擋路徑穿越(400)", traversal.status === 400);
+
   server.close();
   fs.rmSync(root, { recursive: true, force: true });
   console.log(`dashboardServer.test.js: ${passed} 項通過 ✅`);
