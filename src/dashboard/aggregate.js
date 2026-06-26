@@ -17,6 +17,7 @@ function collectTasks(queueDir, roomsMap, limit) {
       continue;
     }
     for (const f of files) {
+      // 只取任務檔;failed/ 內的 <id>.json.error.txt 旁檔不以 .json 結尾,自動排除。
       if (!f.endsWith(".json")) continue;
       const id = f.replace(/\.json$/, "");
       let task;
