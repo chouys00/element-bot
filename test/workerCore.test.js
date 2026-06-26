@@ -68,5 +68,29 @@ function writePending(queueDir, name, obj) {
     fs.rmSync(q, { recursive: true, force: true });
   }
 
+  {
+    const q = freshQueue();
+    const f = writePending(q, "p.json", { rule: "r", task: "t", params: {} });
+    let sawProcessing = false;
+    await processOne(f, {
+      queueDir: q,
+      executor: async () => { sawProcessing = fs.existsSync(path.join(q, "processing", "p.json")); },
+      logger: silentLogger,
+    });
+    ok("執行期間檔案在 processing/", sawProcessing);
+    ok("完成後移到 done/", fs.existsSync(path.join(q, "done", "p.json")));
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
+  {
+    const q = freshQueue();
+    fs.mkdirSync(path.join(q, "processing"), { recursive: true });
+    fs.writeFileSync(path.join(q, "processing", "x.json"), JSON.stringify({ rule: "r", task: "t", params: {} }), "utf8");
+    let ran = 0;
+    const n = await pollOnce({ queueDir: q, executor: async () => { ran++; }, logger: silentLogger });
+    ok("pollOnce 不處理 processing/", ran === 0 && n === 0);
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
   console.log(`workerCore.test.js: ${passed} 項通過 ✅`);
 })().catch((e) => { console.error(e); process.exit(1); });
