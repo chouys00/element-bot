@@ -44,6 +44,8 @@ async function processOne(filePath, deps) {
 }
 
 // 掃描 pending/ 一輪,逐筆 processOne。回傳處理筆數。
+// 注意:只掃 pending/。若程序在任務搬到 processing/ 後、搬到 done/failed/ 前崩潰,
+// 該檔會卡在 processing/ 不會被自動回收(儀表板會一直顯示「進行中」),需人工處理。
 async function pollOnce(deps) {
   const { queueDir } = deps;
   const pendingDir = path.join(queueDir, "pending");
