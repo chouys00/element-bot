@@ -31,4 +31,14 @@ function loadConfig() {
   return { homeserver, userId, password, recoveryKey, deviceName, roomIds, rulesPath, queueDir, pollIntervalMs };
 }
 
-module.exports = { loadConfig, parseRoomIds };
+// 儀表板專用設定:只需路徑與埠,不要求 matrix 憑證,讓 dashboard 能獨立啟動。
+function loadDashboardConfig() {
+  return {
+    queueDir: path.resolve(__dirname, "..", process.env.QUEUE_DIR || "queue"),
+    storageDir: path.resolve(__dirname, "..", "storage"),
+    outputFile: path.resolve(__dirname, "..", "output", "messages.jsonl"),
+    dashboardPort: parseInt(process.env.DASHBOARD_PORT || "3000", 10),
+  };
+}
+
+module.exports = { loadConfig, parseRoomIds, loadDashboardConfig };
