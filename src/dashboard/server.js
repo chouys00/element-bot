@@ -3,7 +3,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail } = require("./aggregate");
-const { readRoomsMap } = require("../roomsSidecar");
+const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -38,7 +38,9 @@ function createServer(deps) {
         return sendJson(res, 200, resolveTaskLog(queueDir, id));
       }
       if (p === "/api/messages") {
-        return sendJson(res, 200, readMessagesTail(outputFile, MESSAGES_LIMIT));
+        const rooms = readRoomsMap(storageDir);
+        const msgs = readMessagesTail(outputFile, MESSAGES_LIMIT).map((m) => ({ ...m, room_name: translateRoom(m.room_id, rooms) }));
+        return sendJson(res, 200, msgs);
       }
       if (p === "/api/status") {
         const hb = readHeartbeat(storageDir);

@@ -88,7 +88,7 @@ function renderStatus(s) {
 
 function renderMsgs(msgs) {
   document.getElementById("msgs").innerHTML = (msgs || []).map((m) =>
-    `<tr><td class="muted">${timeOf(m.origin_server_ts)}</td><td>${esc(m.room_id)}</td><td>${esc(m.sender)}</td><td>${esc(m.body)}</td></tr>`
+    `<tr><td class="muted">${timeOf(m.origin_server_ts)}</td><td>${esc(m.room_name || m.room_id)}</td><td>${esc(m.sender)}</td><td>${esc(m.body)}</td></tr>`
   ).join("") || `<tr><td class="muted">（尚無訊息）</td></tr>`;
 }
 

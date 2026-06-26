@@ -37,6 +37,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 
   const msgs = await (await fetch(`${base}/api/messages`)).json();
   ok("messages 一筆", msgs.length === 1 && msgs[0].body === "hello");
+  ok("messages 房間名稱已翻譯", msgs[0].room_name === "產品群");
 
   const log = await (await fetch(`${base}/api/tasks/t1/log`)).json();
   ok("日誌占位", log.source === "none");
