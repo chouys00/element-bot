@@ -45,7 +45,8 @@ function createServer(deps) {
       // 靜態檔(防目錄穿越)
       const rel = p === "/" ? "index.html" : p.replace(/^\/+/, "");
       const full = path.join(PUBLIC_DIR, rel);
-      if (!full.startsWith(PUBLIC_DIR)) {
+      // 縱深防禦:加 path.sep 確保只允許 PUBLIC_DIR 底下,不被同前綴的兄弟目錄(如 publicX)繞過。
+      if (full !== PUBLIC_DIR && !full.startsWith(PUBLIC_DIR + path.sep)) {
         res.writeHead(403);
         return res.end("forbidden");
       }
