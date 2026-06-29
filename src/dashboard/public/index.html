@@ -6,19 +6,26 @@
 <title>element-bot 監控台</title>
 <style>
   :root { color-scheme: dark; }
-  body { margin: 0; font-family: system-ui, "Microsoft JhengHei", sans-serif; background: #16181d; color: #e6e6e6; font-size: 14px; }
-  header { padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2c2f38; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  html, body { height: 100%; margin: 0; overflow: hidden; display: flex; flex-direction: column; }
+  body { font-family: system-ui, "Microsoft JhengHei", sans-serif; background: #16181d; color: #e6e6e6; font-size: 14px; }
+  header { flex-shrink: 0; padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2c2f38; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
   header .dot { font-weight: bold; }
   header .counts span { margin-right: 10px; color: #aaa; }
-  main { padding: 16px; }
-  .dev { border: 1px dashed #555; border-radius: 8px; padding: 10px; margin-bottom: 18px; }
+  main { flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; }
+  .dev { flex-shrink: 0; border: 1px dashed #555; border-radius: 8px; padding: 10px; }
   .dev summary { cursor: pointer; color: #bbb; }
+  .dev table { max-height: 160px; display: block; overflow-y: auto; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2a2d36; vertical-align: top; }
   th { color: #9aa; font-weight: 600; }
-  .split { display: flex; gap: 14px; }
-  .tasks { flex: 1.5; }
-  .detail { flex: 1; border-left: 1px solid #2a2d36; padding-left: 14px; min-width: 240px; }
+  .split { flex: 1; display: flex; gap: 14px; overflow: hidden; }
+  .tasks { flex: 1.5; display: flex; flex-direction: column; overflow: hidden; }
+  .tasks table { table-layout: fixed; }
+  .tasks thead { display: table; width: 100%; }
+  .tasks tbody { display: block; overflow-y: auto; flex: 1; }
+  .tasks tbody tr { display: table; width: 100%; table-layout: fixed; }
+  .tasks th, .tasks td { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .detail { flex: 1; border-left: 1px solid #2a2d36; padding-left: 14px; min-width: 240px; overflow-y: auto; }
   tr.task { cursor: pointer; }
   tr.task:hover { background: #1f232b; }
   tr.task.sel { background: #283041; }
@@ -35,15 +42,17 @@
   <span class="counts" id="counts"></span>
 </header>
 <main>
-  <details class="dev" open>
-    <summary>🔧 監聽訊息（開發用,之後移除）</summary>
-    <table><tbody id="msgs"></tbody></table>
-  </details>
-
   <div class="split">
     <div class="tasks">
       <b>📋 觸發的任務</b>
       <table>
+        <colgroup>
+          <col style="width:80px">
+          <col style="width:13%">
+          <col style="width:20%">
+          <col>
+          <col style="width:72px">
+        </colgroup>
         <thead><tr><th>時間</th><th>聊天室</th><th>發送者</th><th>規則 → 任務</th><th>狀態</th></tr></thead>
         <tbody id="tasks"></tbody>
       </table>
@@ -53,6 +62,11 @@
       <div id="detail" class="muted">點選左側任務以檢視詳情與日誌。</div>
     </div>
   </div>
+
+  <details class="dev">
+    <summary>🔧 監聽訊息（開發用,之後移除）</summary>
+    <table><tbody id="msgs"></tbody></table>
+  </details>
 </main>
 
 <script>
@@ -96,9 +110,13 @@ function renderTasks(tasks) {
   lastTasks = tasks || [];
   document.getElementById("tasks").innerHTML = lastTasks.map((t) => {
     if (t.parseError) return `<tr class="task" data-id="${esc(t.id)}"><td colspan="4" class="failed">⚠ 任務檔解析失敗:${esc(t.id)}</td><td>${badge(t.status)}</td></tr>`;
+    const ruleTask = `${t.rule} → ${t.task}`;
     return `<tr class="task ${t.id === selectedId ? "sel" : ""}" data-id="${esc(t.id)}">
-      <td class="muted">${timeOf(t.enqueued_at)}</td><td>${esc(t.room_name)}</td><td>${esc(t.sender)}</td>
-      <td>${esc(t.rule)} → ${esc(t.task)}</td><td>${badge(t.status)}</td></tr>`;
+      <td class="muted" title="${esc(timeOf(t.enqueued_at))}">${timeOf(t.enqueued_at)}</td>
+      <td title="${esc(t.room_name)}">${esc(t.room_name)}</td>
+      <td title="${esc(t.sender)}">${esc(t.sender)}</td>
+      <td title="${esc(ruleTask)}">${esc(ruleTask)}</td>
+      <td>${badge(t.status)}</td></tr>`;
   }).join("") || `<tr><td colspan="5" class="muted">（尚無觸發的任務）</td></tr>`;
 
   document.querySelectorAll("tr.task").forEach((tr) => tr.addEventListener("click", () => selectTask(tr.dataset.id)));
