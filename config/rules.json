@@ -1,16 +1,10 @@
 [
   {
-    "name": "deploy",
-    "keywords": ["部署", "上線", "deploy"],
-    "task": "deploy-skill",
+    "name": "防偵測i18n",
+    "keywords": ["防偵測", "i18n", "翻譯檔"],
+    "task": "i18n-skill",
     "use_llm": true,
-    "intent": "有人要求部署或詢問上線流程時才觸發;在抱怨或回顧過去的部署、單純閒聊則不要觸發",
-    "extract": ["環境", "服務名稱"]
-  },
-  {
-    "name": "report",
-    "keywords": ["週報", "report"],
-    "task": "report-skill",
-    "use_llm": false
+    "intent": "有人要求對某站點做防偵測 / 產生 i18n 翻譯檔時才觸發;單純討論或回顧則不要",
+    "extract": ["站點"]
   }
 ]
