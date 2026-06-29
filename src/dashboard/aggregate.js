@@ -86,4 +86,35 @@ function readMessagesTail(outputFile, n) {
   return out.reverse();
 }
 
-module.exports = { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, STATUS_DIRS };
+// 解析 queue/logs/<id>.log 的 NDJSON → { steps:[{key,label,status,ms,note}], summary|null }。
+// 同一 step 多行取最新;summary 取最後一個有頂層 status 的物件。
+function parseProgress(queueDir, id) {
+  let raw;
+  try { raw = fs.readFileSync(path.join(queueDir, "logs", id + ".log"), "utf8"); }
+  catch (_) { return { steps: [], summary: null }; }
+
+  const order = [];
+  const byKey = {};
+  let summary = null;
+  for (const line of raw.split("\n")) {
+    const s = line.trim();
+    if (!s) continue;
+    let o; try { o = JSON.parse(s); } catch (_) { continue; }
+    if (Array.isArray(o.steps)) {
+      for (const st of o.steps) {
+        if (!byKey[st.key]) { byKey[st.key] = { key: st.key, label: st.label, status: "pending" }; order.push(st.key); }
+        else byKey[st.key].label = st.label;
+      }
+    } else if (o.step) {
+      if (!byKey[o.step]) { byKey[o.step] = { key: o.step, label: o.step, status: "pending" }; order.push(o.step); }
+      byKey[o.step].status = o.status;
+      if (o.ms != null) byKey[o.step].ms = o.ms;
+      if (o.note != null) byKey[o.step].note = o.note;
+    } else if (typeof o.status === "string") {
+      summary = o;
+    }
+  }
+  return { steps: order.map((k) => byKey[k]), summary };
+}
+
+module.exports = { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS };

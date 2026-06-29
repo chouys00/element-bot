@@ -2,7 +2,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail } = require("./aggregate");
+const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress } = require("./aggregate");
 const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
 
@@ -36,6 +36,14 @@ function createServer(deps) {
           return res.end("bad id");
         }
         return sendJson(res, 200, resolveTaskLog(queueDir, id));
+      }
+      const progMatch = p.match(/^\/api\/tasks\/([^/]+)\/progress$/);
+      if (progMatch) {
+        const id = decodeURIComponent(progMatch[1]);
+        if (id.includes("..") || id.includes("/") || id.includes("\\")) {
+          res.writeHead(400); return res.end("bad id");
+        }
+        return sendJson(res, 200, parseProgress(queueDir, id));
       }
       if (p === "/api/messages") {
         const rooms = readRoomsMap(storageDir);

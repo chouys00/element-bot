@@ -129,21 +129,38 @@ async function selectTask(id) {
   renderDetail();
 }
 
+function stepIcon(s) { return s === "ok" ? "✓" : s === "run" ? "⏳" : s === "error" ? "✗" : s === "stop" ? "⚠" : "○"; }
+function stepColor(s) { return s === "ok" ? "#7ee787" : s === "run" ? "#58a6ff" : (s === "error" || s === "stop") ? "#ff9d96" : "#586069"; }
+
 async function renderDetail() {
   const t = lastTasks.find((x) => x.id === selectedId);
   const box = document.getElementById("detail");
   if (!t) { box.innerHTML = `<span class="muted">任務已不在列表中。</span>`; return; }
-  let log = { source: "none", text: "（載入中…）" };
-  try { log = await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/log`).then((r) => r.json()); } catch (_) {}
-  const logNote = log.source === "none" ? '<span class="muted">（executor 尚未寫入日誌）</span>' : "";
+  let prog = { steps: [], summary: null };
+  try { prog = await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/progress`).then((r) => r.json()); } catch (_) {}
+
+  const stepsHtml = prog.steps.length
+    ? `<div class="k" style="margin-top:8px">步驟</div>` + prog.steps.map((s) =>
+        `<div style="color:${stepColor(s.status)}">${stepIcon(s.status)} ${esc(s.label)}` +
+        (s.ms != null ? ` <span class="muted">${(s.ms / 1000).toFixed(1)}s</span>` : (s.note ? ` <span class="muted">${esc(s.note)}</span>` : "")) +
+        `</div>`).join("")
+    : "";
+
+  const sum = prog.summary;
+  const sumHtml = sum
+    ? `<div class="k" style="margin-top:8px">結果</div><div>${esc(sum.status)} — ${esc(sum.summary || sum.message || "")}</div>` +
+      ((sum.needsReview && sum.needsReview.length)
+        ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "")
+    : "";
+
   box.innerHTML = `
     <div><span class="k">狀態</span> ${badge(t.status)}</div>
     <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>
     <div><span class="k">規則</span> ${esc(t.rule)} → ${esc(t.task)}</div>
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
-    <div class="k" style="margin-top:8px">日誌 ${logNote}</div>
-    <pre>${esc(log.text)}</pre>`;
+    ${stepsHtml}
+    ${sumHtml}`;
 }
 
 refresh();
