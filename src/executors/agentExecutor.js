@@ -36,6 +36,7 @@ async function agentExecutor(task, ctx) {
   const workDir = path.join(queueDir, "work", id);
 
   let state = readState(workDir) || initState(id);
+  if (!state.steps) state.steps = {};
   state.workDir = workDir;
   state.attempt = (state.attempt || 0) + 1;
   writeState(workDir, state);
@@ -48,9 +49,9 @@ async function agentExecutor(task, ctx) {
 
   for (const step of STEPS) {
     if (state.steps[step] === "ok") { emit({ step, status: "ok", note: "略過(已完成)" }); continue; }
-    emit({ step, status: "run" });
     const t0 = Date.now();
     try {
+      emit({ step, status: "run" });
       const r = await handlers[step]({ workDir, task, emit, logger, shared });
       if (step === "summarize") summary = r;
       markStep(state, step, "ok");
