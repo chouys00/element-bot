@@ -18,7 +18,8 @@ function copyTree(srcDir, destDir) {
 
 // 在隔離副本內跑 headless claude;非零 exit 丟錯。
 function runClaude(prompt, copyDir) {
-  const r = spawnSync("claude", ["--dangerously-skip-permissions", "-p", prompt], {
+  const r = spawnSync("claude", ["--dangerously-skip-permissions", "-p"], {
+    input: prompt,
     cwd: copyDir, encoding: "utf8",
     shell: process.platform === "win32",
     timeout: parseInt(process.env.AI_TIMEOUT_MS || "1800000", 10),
@@ -30,9 +31,11 @@ function runClaude(prompt, copyDir) {
 // 跑 verify 腳本,從輸出解析 errors=/warnings=。
 function runVerify(args) {
   const r = spawnSync(args[0], args.slice(1), { encoding: "utf8", env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
+  if (r.error) throw r.error;
   const text = String(r.stdout || "") + "\n" + String(r.stderr || "");
   const m = text.match(/errors=(\d+),\s*warnings=(\d+)/);
-  return { errors: m ? parseInt(m[1], 10) : 0, warnings: m ? parseInt(m[2], 10) : 0 };
+  if (!m) throw new Error("verify 輸出格式錯誤,找不到 errors=/warnings= 行:\n" + text.slice(0, 300));
+  return { errors: parseInt(m[1], 10), warnings: parseInt(m[2], 10) };
 }
 
 module.exports = { gitClean, copyTree, runClaude, runVerify };

@@ -13,7 +13,15 @@ const I18N_SKILL_DIR = process.env.NSL_SKILL_DIR || path.join(FTL_ROOT, ".cursor
 
 const DEFS = {
   "i18n-skill": {
-    sourceDir: (task) => path.join(FTL_ROOT, String((task.params && task.params["站點"]) || "")),
+    sourceDir: (task) => {
+      const site = String((task.params && task.params["站點"]) || "");
+      const resolved = path.resolve(FTL_ROOT, site);
+      const root = path.resolve(FTL_ROOT);
+      if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+        throw new Error("站點路徑逸出 FTL_ROOT:" + site);
+      }
+      return resolved;
+    },
     prompt: () => [
       "你是無人值守的自動執行者,必須全自動完成,禁止發問或停下來等待確認。",
       "所有原需使用者確認/Plan 同意/對照表確認/dry-run 確認的環節,一律自動採用文件建議做法並續行。",

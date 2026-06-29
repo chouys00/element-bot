@@ -18,5 +18,10 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   try { getTaskDef("不存在"); } catch (_) { threw = true; }
   ok("查無定義丟錯", threw);
 }
+{
+  let threw = false;
+  try { getTaskDef("i18n-skill").sourceDir({ params: { 站點: "../evil" } }); } catch (_) { threw = true; }
+  ok("站點逸出 FTL_ROOT 丟錯", threw);
+}
 
 console.log(`taskDefs.test.js: ${passed} 項通過 ✅`);

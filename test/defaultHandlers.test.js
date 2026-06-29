@@ -68,5 +68,14 @@ const noop = () => {};
     ok("prepare 先 git 再 copy", order.join(",") === "git,copy");
     fs.rmSync(workDir, { recursive: true, force: true });
   }
+  // summarize:沒有任何產物 → ERROR
+  {
+    const workDir = freshWork(); // copy 內無 i18n/zh_CN.json
+    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 0 }) };
+    const h = make(ops);
+    const sum = await h.summarize({ workDir, task: { task: "i18n-skill" }, emit: noop, shared: {} });
+    ok("無產物 → ERROR", sum.status === "ERROR");
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
   console.log(`defaultHandlers.test.js: ${passed} 項通過 ✅`);
 })().catch((e) => { console.error(e); process.exit(1); });
