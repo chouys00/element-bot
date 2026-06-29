@@ -28,7 +28,7 @@ async function processOne(filePath, deps) {
   fs.renameSync(filePath, processingPath);
 
   try {
-    await executor(task, { logger });
+    await executor(task, { logger, queueDir, id: base.replace(/\.json$/, "") });
     fs.mkdirSync(doneDir, { recursive: true });
     fs.renameSync(processingPath, path.join(doneDir, base));
     logger.log(`[worker] ${base} 完成 → done/`);
@@ -59,4 +59,21 @@ async function pollOnce(deps) {
   return n;
 }
 
-module.exports = { processOne, pollOnce };
+// 啟動回收:把 processing/ 內所有殘留任務搬回 pending/。
+// 對應 work/<id>/state.json 仍在,重新撿起時會從斷點續跑。同時修掉「卡 processing/」的舊問題。
+function recoverProcessing(queueDir, logger) {
+  const processingDir = path.join(queueDir, "processing");
+  const pendingDir = path.join(queueDir, "pending");
+  if (!fs.existsSync(processingDir)) return 0;
+  const files = fs.readdirSync(processingDir).filter((f) => f.endsWith(".json"));
+  if (files.length) fs.mkdirSync(pendingDir, { recursive: true });
+  let n = 0;
+  for (const f of files) {
+    fs.renameSync(path.join(processingDir, f), path.join(pendingDir, f));
+    logger.log(`[worker] 回收中斷任務 ${f} → pending/(將從斷點續跑)`);
+    n++;
+  }
+  return n;
+}
+
+module.exports = { processOne, pollOnce, recoverProcessing };

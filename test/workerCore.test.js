@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { processOne, pollOnce } = require("../src/workerCore");
+const { processOne, pollOnce, recoverProcessing } = require("../src/workerCore");
 
 let passed = 0;
 function ok(name, cond) {
@@ -89,6 +89,29 @@ function writePending(queueDir, name, obj) {
     let ran = 0;
     const n = await pollOnce({ queueDir: q, executor: async () => { ran++; }, logger: silentLogger });
     ok("pollOnce 不處理 processing/", ran === 0 && n === 0);
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
+  // recoverProcessing:把 processing/ 殘留搬回 pending/(供啟動回收)
+  {
+    const q = freshQueue();
+    fs.mkdirSync(path.join(q, "processing"), { recursive: true });
+    fs.writeFileSync(path.join(q, "processing", "stuck.json"), JSON.stringify({ rule: "r", task: "t" }), "utf8");
+    const n = recoverProcessing(q, silentLogger);
+    ok("回收回傳筆數", n === 1);
+    ok("已搬回 pending/", fs.existsSync(path.join(q, "pending", "stuck.json")));
+    ok("processing/ 已清空", !fs.existsSync(path.join(q, "processing", "stuck.json")));
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
+  // processOne 應把 id 與 queueDir 傳給 executor
+  {
+    const q = freshQueue();
+    const f = writePending(q, "withid.json", { rule: "r", task: "t" });
+    let seen = null;
+    await processOne(f, { queueDir: q, executor: async (t, ctx) => { seen = ctx; }, logger: silentLogger });
+    ok("executor 收到 id", seen && seen.id === "withid");
+    ok("executor 收到 queueDir", seen && seen.queueDir === q);
     fs.rmSync(q, { recursive: true, force: true });
   }
 
