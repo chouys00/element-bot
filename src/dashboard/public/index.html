@@ -166,7 +166,7 @@ async function renderDetail() {
 
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
     ${sum && sum.openPath ? `<button data-act="open" class="abtn">開啟產物</button>` : ""}
-    ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收完成"}</button>` : ""}
+    ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收"}</button>` : ""}
     ${t.status === "failed" ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
   </div>`;
   box.insertAdjacentHTML("beforeend", actHtml);

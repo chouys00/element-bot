@@ -59,9 +59,20 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("error.txt 已清", !fs.existsSync(path.join(queueDir, "failed", "r1.json.error.txt")));
 
   // POST verify:寫 work/<id>/verified.json
+  fs.writeFileSync(path.join(queueDir, "done", "v1.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
   const vf = await fetch(`${base}/api/tasks/v1/verify`, { method: "POST" });
   ok("verify 回 200", vf.status === 200);
   ok("有 verified 標記", fs.existsSync(path.join(queueDir, "work", "v1", "verified.json")));
+
+  // verify 不存在的任務 → 404
+  const vno = await fetch(`${base}/api/tasks/ghost/verify`, { method: "POST" });
+  ok("verify 無此任務 → 404", vno.status === 404);
+
+  // open 路徑逸出 work/ → 400(openPath 在 work/ 外,spawn 前就被擋下)
+  fs.mkdirSync(path.join(queueDir, "logs"), { recursive: true });
+  fs.writeFileSync(path.join(queueDir, "logs", "o1.log"), JSON.stringify({ status: "OK", summary: "x", openPath: "C:/evil/x" }) + "\n", "utf8");
+  const op = await fetch(`${base}/api/tasks/o1/open`, { method: "POST" });
+  ok("open 路徑逸出 work/ → 400", op.status === 400);
 
   // POST 防穿越:id 帶 .. → 400
   const badPost = await fetch(`${base}/api/tasks/..%2Fx/requeue`, { method: "POST" });

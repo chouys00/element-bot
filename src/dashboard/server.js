@@ -2,7 +2,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress } = require("./aggregate");
+const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS } = require("./aggregate");
 const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
 
@@ -16,7 +16,7 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-function safeId(id) { return !(id.includes("..") || id.includes("/") || id.includes("\\")); }
+function safeId(id) { return id.length > 0 && !(id.includes("..") || id.includes("/") || id.includes("\\") || id.includes("\0")); }
 
 const CONTENT_TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
 
@@ -52,7 +52,9 @@ function createServer(deps) {
             require("child_process").spawn(opener, [resolved], { detached: true, stdio: "ignore" }).unref();
             return sendJson(res, 200, { ok: true });
           }
-          // verify:寫驗收標記
+          // verify:先確認任務存在,避免替不存在的 id 建立孤兒 work 目錄
+          const exists = STATUS_DIRS.some((s) => fs.existsSync(path.join(queueDir, s, id + ".json")));
+          if (!exists) { res.writeHead(404); return res.end("no such task"); }
           const workDir = path.join(queueDir, "work", id);
           fs.mkdirSync(workDir, { recursive: true });
           fs.writeFileSync(path.join(workDir, "verified.json"), JSON.stringify({ verified_at: new Date().toISOString() }), "utf8");
