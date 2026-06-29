@@ -107,7 +107,7 @@ function parseProgress(queueDir, id) {
       }
     } else if (o.step) {
       if (!byKey[o.step]) { byKey[o.step] = { key: o.step, label: o.step, status: "pending" }; order.push(o.step); }
-      byKey[o.step].status = o.status;
+      if (o.status != null) byKey[o.step].status = o.status;
       if (o.ms != null) byKey[o.step].ms = o.ms;
       if (o.note != null) byKey[o.step].note = o.note;
     } else if (typeof o.status === "string") {

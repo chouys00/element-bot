@@ -149,7 +149,7 @@ async function renderDetail() {
   const sum = prog.summary;
   const sumHtml = sum
     ? `<div class="k" style="margin-top:8px">結果</div><div>${esc(sum.status)} — ${esc(sum.summary || sum.message || "")}</div>` +
-      ((sum.needsReview && sum.needsReview.length)
+      ((Array.isArray(sum.needsReview) && sum.needsReview.length)
         ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "")
     : "";
 
