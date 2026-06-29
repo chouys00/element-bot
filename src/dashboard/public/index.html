@@ -34,6 +34,8 @@
   pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   .muted { color: #777; }
   .k { color: #889; display: inline-block; min-width: 64px; }
+  .abtn { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .abtn:hover { border-color: #58a6ff; color: #79b8ff; }
 </style>
 </head>
 <body>
@@ -161,6 +163,23 @@ async function renderDetail() {
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
     ${stepsHtml}
     ${sumHtml}`;
+
+  const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+    ${sum && sum.openPath ? `<button data-act="open" class="abtn">開啟產物</button>` : ""}
+    ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收完成"}</button>` : ""}
+    ${t.status === "failed" ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
+  </div>`;
+  box.insertAdjacentHTML("beforeend", actHtml);
+  box.querySelectorAll(".abtn").forEach((b) => b.addEventListener("click", () => doAction(b.dataset.act, sum)));
+}
+
+async function doAction(act, sum) {
+  if (act === "open") {
+    if (sum && sum.openPath) { await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/open`, { method: "POST" }).catch(() => {}); }
+    return;
+  }
+  await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/${act}`, { method: "POST" }).catch(() => {});
+  refresh();
 }
 
 refresh();

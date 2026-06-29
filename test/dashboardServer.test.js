@@ -48,6 +48,29 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const traversal = await fetch(`${base}/api/tasks/..%2F..%2Fsecret/log`);
   ok("log 端點擋路徑穿越(400)", traversal.status === 400);
 
+  // POST requeue:failed/<id>.json → pending/<id>.json
+  fs.mkdirSync(path.join(queueDir, "failed"), { recursive: true });
+  fs.writeFileSync(path.join(queueDir, "failed", "r1.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  fs.writeFileSync(path.join(queueDir, "failed", "r1.json.error.txt"), "boom", "utf8");
+  const rq = await fetch(`${base}/api/tasks/r1/requeue`, { method: "POST" });
+  ok("requeue 回 200", rq.status === 200);
+  ok("已移回 pending/", fs.existsSync(path.join(queueDir, "pending", "r1.json")));
+  ok("failed/ 任務已無", !fs.existsSync(path.join(queueDir, "failed", "r1.json")));
+  ok("error.txt 已清", !fs.existsSync(path.join(queueDir, "failed", "r1.json.error.txt")));
+
+  // POST verify:寫 work/<id>/verified.json
+  const vf = await fetch(`${base}/api/tasks/v1/verify`, { method: "POST" });
+  ok("verify 回 200", vf.status === 200);
+  ok("有 verified 標記", fs.existsSync(path.join(queueDir, "work", "v1", "verified.json")));
+
+  // POST 防穿越:id 帶 .. → 400
+  const badPost = await fetch(`${base}/api/tasks/..%2Fx/requeue`, { method: "POST" });
+  ok("穿越 POST id 擋下", badPost.status === 400);
+
+  // requeue 不存在的 failed 任務 → 404
+  const noFail = await fetch(`${base}/api/tasks/nope/requeue`, { method: "POST" });
+  ok("requeue 無此 failed → 404", noFail.status === 404);
+
   server.close();
   fs.rmSync(root, { recursive: true, force: true });
   console.log(`dashboardServer.test.js: ${passed} 項通過 ✅`);

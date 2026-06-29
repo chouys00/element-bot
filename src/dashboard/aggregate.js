@@ -39,6 +39,7 @@ function collectTasks(queueDir, roomsMap, limit) {
         body: src.body,
         event_id: src.event_id,
         enqueued_at: task.enqueued_at,
+        verified: isVerified(queueDir, id),
       });
     }
   }
@@ -117,4 +118,9 @@ function parseProgress(queueDir, id) {
   return { steps: order.map((k) => byKey[k]), summary };
 }
 
-module.exports = { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS };
+// 任務是否已被人工驗收(work/<id>/verified.json 存在)。
+function isVerified(queueDir, id) {
+  return fs.existsSync(path.join(queueDir, "work", id, "verified.json"));
+}
+
+module.exports = { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, isVerified, STATUS_DIRS };

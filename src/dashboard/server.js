@@ -16,6 +16,8 @@ function sendJson(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
+function safeId(id) { return !(id.includes("..") || id.includes("/") || id.includes("\\")); }
+
 const CONTENT_TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
 
 // deps = { queueDir, storageDir, outputFile }
@@ -24,6 +26,40 @@ function createServer(deps) {
   return http.createServer((req, res) => {
     const p = new URL(req.url, "http://localhost").pathname;
     try {
+      if (req.method === "POST") {
+        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|verify|open)$/);
+        if (m) {
+          const id = decodeURIComponent(m[1]);
+          if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
+          if (m[2] === "requeue") {
+            const from = path.join(queueDir, "failed", id + ".json");
+            const to = path.join(queueDir, "pending", id + ".json");
+            if (!fs.existsSync(from)) { res.writeHead(404); return res.end("no failed task"); }
+            fs.mkdirSync(path.join(queueDir, "pending"), { recursive: true });
+            try { fs.rmSync(path.join(queueDir, "failed", id + ".json.error.txt"), { force: true }); } catch (_) {}
+            fs.renameSync(from, to);
+            return sendJson(res, 200, { ok: true });
+          }
+          if (m[2] === "open") {
+            const prog = parseProgress(queueDir, id);
+            const openPath = prog.summary && prog.summary.openPath;
+            const workRoot = path.join(queueDir, "work");
+            const resolved = openPath ? path.resolve(openPath) : "";
+            if (!resolved || !(resolved === path.resolve(workRoot) || resolved.startsWith(path.resolve(workRoot) + path.sep))) {
+              res.writeHead(400); return res.end("bad path");
+            }
+            const opener = process.platform === "win32" ? "explorer" : process.platform === "darwin" ? "open" : "xdg-open";
+            require("child_process").spawn(opener, [resolved], { detached: true, stdio: "ignore" }).unref();
+            return sendJson(res, 200, { ok: true });
+          }
+          // verify:寫驗收標記
+          const workDir = path.join(queueDir, "work", id);
+          fs.mkdirSync(workDir, { recursive: true });
+          fs.writeFileSync(path.join(workDir, "verified.json"), JSON.stringify({ verified_at: new Date().toISOString() }), "utf8");
+          return sendJson(res, 200, { ok: true });
+        }
+        res.writeHead(404); return res.end("not found");
+      }
       if (p === "/api/tasks") {
         return sendJson(res, 200, collectTasks(queueDir, readRoomsMap(storageDir), TASKS_LIMIT));
       }

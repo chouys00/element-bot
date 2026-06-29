@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { collectTasks, statusCounts, readMessagesTail, resolveTaskLog } = require("../src/dashboard/aggregate");
+const { collectTasks, statusCounts, readMessagesTail, resolveTaskLog, isVerified } = require("../src/dashboard/aggregate");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
@@ -48,6 +48,11 @@ fs.appendFileSync(out, JSON.stringify({ body: "m1" }) + "\n" + JSON.stringify({ 
 const msgs = readMessagesTail(out, 50);
 ok("訊息尾段新到舊", msgs.length === 2 && msgs[0].body === "m2");
 ok("缺檔回空陣列", readMessagesTail(path.join(root, "nope.jsonl"), 50).length === 0);
+
+fs.mkdirSync(path.join(queueDir, "work", "t1"), { recursive: true });
+fs.writeFileSync(path.join(queueDir, "work", "t1", "verified.json"), "{}", "utf8");
+ok("verified 反映標記檔", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t1").verified === true);
+ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t2").verified === false);
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`aggregate.test.js: ${passed} 項通過 ✅`);
