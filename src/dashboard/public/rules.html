@@ -25,7 +25,10 @@
   .row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
   .row > label { color: #9aa; }
   input[type=text], select { width: 100%; box-sizing: border-box; background: #0f1115; color: #e6e6e6; border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
-  select[multiple] { min-height: 80px; }
+  #f_rooms { display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow: auto; background: #0f1115; border: 1px solid #30363d; border-radius: 6px; padding: 8px; }
+  #f_rooms .chk { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  #f_rooms .chk:hover { color: #79b8ff; }
+  #f_rooms input[type=checkbox] { width: auto; margin: 0; }
   .hint { color: #667; font-size: 12px; }
   .tag { display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 1px 8px; margin: 1px 2px; font-size: 12px; }
   .bar { display: flex; gap: 8px; align-items: center; }
@@ -57,7 +60,7 @@
     <div class="row"><label>名稱</label><input type="text" id="f_name" placeholder="例如:改顏色" /></div>
     <div class="row"><label>關鍵字</label><input type="text" id="f_keywords" placeholder="逗號分隔,例如:改顏色, 背景" /></div>
     <div class="row"><label>任務 (task)</label><select id="f_task"></select></div>
-    <div class="row"><label>房間範圍</label><div><select id="f_rooms" multiple></select><div class="hint">不選 = 套用全部監聽房間;可複選(Ctrl/⌘ 點選)</div></div></div>
+    <div class="row"><label>房間範圍</label><div><div id="f_rooms"></div><div class="hint">勾選的房間才會觸發此規則;<b>都不勾 = 套用全部監聽房間</b></div></div></div>
     <div class="row"><label>使用 LLM</label><div><input type="checkbox" id="f_use_llm" /> <span class="hint">勾選後此規則命中關鍵字還會經 LLM 二次判斷並抽參數</span></div></div>
     <div class="row llmonly"><label>觸發意圖 (intent)</label><input type="text" id="f_intent" placeholder="use_llm 開啟時必填:描述什麼情況該觸發" /></div>
     <div class="row llmonly"><label>抽取欄位 (extract)</label><input type="text" id="f_extract" placeholder="逗號分隔,可空" /></div>
@@ -116,15 +119,16 @@ function fillSelects(rule) {
   ts.innerHTML = tasks.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
   if (rule && rule.task) ts.value = rule.task;
 
-  // 房間選項:已知房間 + 規則裡可能有但 rooms.json 還沒學到的 id,都列出來不遺漏。
+  // 房間選項(checkbox):已知房間 + 規則裡可能有但 rooms.json 還沒學到的 id,都列出來不遺漏。
+  // 勾選 = 納入此規則;都不勾 = 全部房間。
   const ids = new Set(Object.keys(rooms));
   if (rule && Array.isArray(rule.rooms)) rule.rooms.forEach((id) => ids.add(id));
   const sel = new Set(rule && Array.isArray(rule.rooms) ? rule.rooms : []);
   const rs = document.getElementById("f_rooms");
   rs.innerHTML = [...ids].map((id) => {
-    const label = rooms[id] && rooms[id] !== id ? `${rooms[id]}(${id}）` : id;
-    return `<option value="${esc(id)}" ${sel.has(id) ? "selected" : ""}>${esc(label)}</option>`;
-  }).join("") || `<option disabled>（尚無已知房間;bot 在房間收過訊息後才會出現）</option>`;
+    const label = rooms[id] && rooms[id] !== id ? `${rooms[id]}（${id}）` : id;
+    return `<label class="chk"><input type="checkbox" value="${esc(id)}" ${sel.has(id) ? "checked" : ""}/> ${esc(label)}</label>`;
+  }).join("") || `<span class="muted">（尚無已知房間;bot 在房間收過訊息後才會出現,屆時再回來勾選）</span>`;
 }
 
 function toggleLlm() {
@@ -153,7 +157,7 @@ function applyEdit() {
   const keywords = splitCsv(document.getElementById("f_keywords").value);
   const task = document.getElementById("f_task").value;
   const use_llm = document.getElementById("f_use_llm").checked;
-  const roomsSel = [...document.getElementById("f_rooms").selectedOptions].map((o) => o.value);
+  const roomsSel = [...document.querySelectorAll("#f_rooms input:checked")].map((c) => c.value);
   const intent = document.getElementById("f_intent").value.trim();
   const extract = splitCsv(document.getElementById("f_extract").value);
 
