@@ -45,10 +45,11 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
   - `GET /api/rules` → `{ rules, rooms, tasks }`(規則 + 房間 id→名 + task 名單)
   - `PUT /api/rules` → body 整個陣列;驗證後 saveRules;非法回 400 不寫檔
   - 測試:dashboardServer 29 項通過(含 GET/PUT 合法/非法/壞 JSON)
-- [ ] **S4. 前端新分頁**
-  - `public/rules.html` + `public/rules.js`;index.html 互加導航連結
-  - 規則列表 + 新增/編輯/刪除 + 儲存全部
-  - 表單:name / keywords(逗號分隔)/ task(下拉)/ rooms(多選房名→存 id)/ use_llm(勾)/ intent+extract(use_llm 時顯示)
+- [x] **S4. 前端新分頁** ✅
+  - `public/rules.html`(JS 內嵌,與 index.html 同單檔風格,未拆 rules.js);index.html 頁首加「⚙ 規則設定」連結、rules.html 加「← 回監控台」
+  - 規則列表 + 新增/編輯/刪除 + 儲存全部(整批 PUT)
+  - 表單:name / keywords(逗號分隔)/ task(下拉)/ rooms(多選房名→存 id,不選=全部)/ use_llm(勾)/ intent+extract(use_llm 時顯示)
+  - 已用 curl 驗證 GET /api/rules 對真實檔正常、/rules.html 回 200(PUT 不動真實檔,留 S6 瀏覽器驗)
 - [ ] **S5. 熱載入**
   - 新模組 `rulesWatcher.js`:`watch(rulesPath, onReload)` 含 debounce;reload 邏輯抽成可測函式
   - `index.js`:rules 改可變持有者;watch 成功 swap、失敗保留舊規則 + log
@@ -60,7 +61,7 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
 
 ## RESUME HERE
 
-**目前進度:S1、S2、S3 完成並 commit。全套 224 項通過。** 下一步:S4 — 前端新分頁 `public/rules.html` + `public/rules.js`,index.html 互加導航連結。打 `GET /api/rules` 載入,編輯後 `PUT /api/rules` 整批存。表單欄位見清單 S4。純 HTML/JS、沿用 index.html 風格。
+**目前進度:S1–S4 完成並 commit。全套 224 項通過,dashboard 已重啟跑新碼。** 下一步:S5 — 熱載入。新模組 `src/rulesWatcher.js`:`watch(rulesPath, onReload)` 含 debounce;`index.js` 把 `rules` 從常數改可變持有者(用物件或閉包包起來,讓 trigger 拿到最新),watch 觸發時重讀 loadRules,成功 swap、失敗保留舊規則 + log。reload 判斷邏輯抽成可測純函式(壞檔保留舊、好檔換新),加 `test/rulesWatcher.test.js` 並併進 package.json test script。
 
 ## 注意事項 / 雷
 
