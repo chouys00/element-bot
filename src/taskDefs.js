@@ -5,8 +5,7 @@ const path = require("path");
 // 每個 skill 一筆任務定義。新增 skill = 在此加一筆,不動 worker/bot/dashboard。
 // 介面:
 //   sourceDir(task) -> 來源站點/專案絕對路徑(會被複製成隔離副本)
-//   run(copyDir, task) -> (選填)本地動作;有提供則 ai_run 執行它而非 claude
-//   prompt(task)    -> 餵給 claude -p 的無人值守指示(無 run 時用)
+//   prompt(task)    -> 餵給 claude -p 的無人值守指示(叫 claude 進副本讀該專案的 SKILL.md 並執行)
 //   artifacts       -> 預期產物(相對 copy 根);全部存在則 ai_run 跳過
 //   verifyArgs(copyDir) -> ["py","-3",script,copyDir,locale] 之類;null=不 verify
 //   needsReview     -> 完成後要人補/核對的提示
@@ -41,8 +40,10 @@ const DEFS = {
     needsReview: ["請人工核對文案正確性(verify 只驗結構不驗文意)", "套用到正式站前再次確認"],
   },
 
-  // 模擬「對本地專案做修改 → 完成通知」的測試 skill:不需 claude/Python/外部資源。
-  // 走 run() hook(本地動作),產出 result.json;verifyArgs:null 故跳過 Python verify。
+  // 示範「目標專案自帶 SKILL.md、由 claude 讀後執行」的 skill。
+  // element-bot 不持有 skill 邏輯:只把 claude 帶進專案副本,叫它讀 ./SKILL.md 並照做。
+  // 目標專案(sample-app)是個全白前端,其 SKILL.md 指示「把背景改成使用者要的顏色 + 寫 result.json」。
+  // verifyArgs:null 故跳過外部 verify;result.json 是專案 SKILL 產出的完成標記。
   "demo-skill": {
     sourceDir: (task) => {
       const proj = String((task.params && task.params["專案"]) || "sample-app");
@@ -53,10 +54,19 @@ const DEFS = {
       }
       return resolved;
     },
-    run: require("./skills/demoModify").run,
+    prompt: (task) => {
+      const instruction = String((task && task.source && task.source.body) || "把背景改成淡藍色");
+      return [
+        "你是無人值守的自動執行者,必須全自動完成,禁止發問或停下來等待確認。",
+        "你的當前工作目錄就是一個前端專案的副本,所有讀寫只能發生在此目錄(及其子目錄)內。",
+        "請完整讀取當前目錄的 SKILL.md,並嚴格依照其指示完成這次任務。",
+        "使用者透過聊天室下達的指令是:「" + instruction + "」。",
+        "安全紅線:只准讀寫當前工作目錄(及其子目錄),不可碰此目錄以外任何檔案。",
+      ].join("");
+    },
     artifacts: ["result.json"],
     verifyArgs: null,
-    needsReview: ["確認模擬改動內容是否正確", "正式套用前再次確認"],
+    needsReview: ["確認背景色是否如預期(開 index.html 檢視)", "正式套用前再次確認"],
   },
 };
 

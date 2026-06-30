@@ -20,10 +20,11 @@
   th { color: #9aa; font-weight: 600; }
   .split { flex: 1; display: flex; gap: 14px; overflow: hidden; }
   .tasks { flex: 1.5; display: flex; flex-direction: column; overflow: hidden; }
-  .tasks table { table-layout: fixed; }
-  .tasks thead { display: table; width: 100%; }
-  .tasks tbody { display: block; overflow-y: auto; flex: 1; }
-  .tasks tbody tr { display: table; width: 100%; table-layout: fixed; }
+  .tasks table { display: block; }
+  .tasks thead, .tasks tbody, .tasks tr { display: block; width: 100%; }
+  .tasks thead { flex-shrink: 0; }
+  .tasks tbody { overflow-y: auto; flex: 1; }
+  .tasks tr { display: grid; grid-template-columns: 80px 13% 20% 1fr 72px; }
   .tasks th, .tasks td { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .detail { flex: 1; border-left: 1px solid #2a2d36; padding-left: 14px; min-width: 240px; overflow-y: auto; }
   tr.task { cursor: pointer; }
@@ -48,13 +49,6 @@
     <div class="tasks">
       <b>📋 觸發的任務</b>
       <table>
-        <colgroup>
-          <col style="width:80px">
-          <col style="width:13%">
-          <col style="width:20%">
-          <col>
-          <col style="width:72px">
-        </colgroup>
         <thead><tr><th>時間</th><th>聊天室</th><th>發送者</th><th>規則 → 任務</th><th>狀態</th></tr></thead>
         <tbody id="tasks"></tbody>
       </table>
@@ -111,7 +105,7 @@ function renderMsgs(msgs) {
 function renderTasks(tasks) {
   lastTasks = tasks || [];
   document.getElementById("tasks").innerHTML = lastTasks.map((t) => {
-    if (t.parseError) return `<tr class="task" data-id="${esc(t.id)}"><td colspan="4" class="failed">⚠ 任務檔解析失敗:${esc(t.id)}</td><td>${badge(t.status)}</td></tr>`;
+    if (t.parseError) return `<tr class="task" data-id="${esc(t.id)}"><td style="grid-column:span 4" class="failed">⚠ 任務檔解析失敗:${esc(t.id)}</td><td>${badge(t.status)}</td></tr>`;
     const ruleTask = `${t.rule} → ${t.task}`;
     return `<tr class="task ${t.id === selectedId ? "sel" : ""}" data-id="${esc(t.id)}">
       <td class="muted" title="${esc(timeOf(t.enqueued_at))}">${timeOf(t.enqueued_at)}</td>
@@ -119,7 +113,7 @@ function renderTasks(tasks) {
       <td title="${esc(t.sender)}">${esc(t.sender)}</td>
       <td title="${esc(ruleTask)}">${esc(ruleTask)}</td>
       <td>${badge(t.status)}</td></tr>`;
-  }).join("") || `<tr><td colspan="5" class="muted">（尚無觸發的任務）</td></tr>`;
+  }).join("") || `<tr><td style="grid-column:span 5" class="muted">（尚無觸發的任務）</td></tr>`;
 
   document.querySelectorAll("tr.task").forEach((tr) => tr.addEventListener("click", () => selectTask(tr.dataset.id)));
   if (selectedId) renderDetail();

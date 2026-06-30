@@ -77,16 +77,17 @@ const noop = () => {};
     ok("無產物 → ERROR", sum.status === "ERROR");
     fs.rmSync(workDir, { recursive: true, force: true });
   }
-  // demo-skill:ai_run 走 def.run(本地動作),產出 result.json,不呼叫 claude
+  // demo-skill:ai_run 走 claude(讀專案 SKILL.md),prompt 指向 SKILL.md 並帶聊天指令
   {
     const workDir = freshWork();
-    let claudeCalled = false;
-    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: () => { claudeCalled = true; }, runVerify: () => ({ errors: 0 }) };
+    let claudePrompt = null;
+    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: (p) => { claudePrompt = p; }, runVerify: () => ({ errors: 0 }) };
     const h = make(ops);
-    await h.ai_run({ workDir, task: { task: "demo-skill", params: { 改動: "測試一下" } }, emit: noop, shared: {} });
-    ok("demo-skill 不呼叫 claude", claudeCalled === false);
-    ok("demo-skill 產出 result.json", fs.existsSync(path.join(workDir, "copy", "result.json")));
-    ok("demo-skill 改了 CHANGELOG.md", fs.existsSync(path.join(workDir, "copy", "CHANGELOG.md")));
+    await h.ai_run({ workDir, task: { task: "demo-skill", source: { body: "把背景改成紅色" } }, emit: noop, shared: {} });
+    ok("demo-skill ai_run 呼叫 claude", claudePrompt !== null);
+    ok("demo-skill prompt 指向 SKILL.md", typeof claudePrompt === "string" && claudePrompt.includes("SKILL.md"));
+    // 模擬 claude 讀 SKILL.md 後產出 result.json,summarize → OK
+    fs.writeFileSync(path.join(workDir, "copy", "result.json"), "{}", "utf8");
     const shared = {};
     await h.verify({ workDir, task: { task: "demo-skill" }, emit: noop, shared });
     const sum = await h.summarize({ workDir, task: { task: "demo-skill" }, emit: noop, shared });
