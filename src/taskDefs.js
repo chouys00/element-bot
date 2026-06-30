@@ -74,7 +74,12 @@ function getTaskDef(name) {
   return def;
 }
 
+// 列出所有可用的 task 名稱,供 dashboard 規則編輯的 task 下拉選單用。
+function taskNames() {
+  return Object.keys(DEFS);
+}
+
 // 各 skill 真實專案的根目錄,供 dashboard 的「開啟專案」白名單檢查用。
 const PROJECT_ROOTS = [FTL_ROOT, DEMO_ROOT];
 
-module.exports = { getTaskDef, PROJECT_ROOTS };
+module.exports = { getTaskDef, PROJECT_ROOTS, taskNames };

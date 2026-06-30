@@ -35,11 +35,11 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
 
 ## 建構清單(TDD,每步做完即 commit)
 
-- [ ] **S1. 後端純函式**
+- [x] **S1. 後端純函式** ✅
   - `taskDefs.js`:加 `taskNames()` 回 `Object.keys(DEFS)`,export 出去(供 task 下拉)
   - `rules.js`:加 `saveRules(path, rules)` = 全條 `validateRule` 通過才**原子寫**(寫 `.tmp` 再 rename)
-  - 測試:saveRules 全過才寫 / 有壞規則整批拒不寫 / 寫入內容正確;taskNames 含 demo-skill
-- [ ] **S2. config**
+  - 測試:rules 21 項、taskDefs 17 項通過
+- [x] **S2. config** ✅
   - `loadDashboardConfig` 補 `rulesPath`(目前只有 loadConfig 有)
 - [ ] **S3. server endpoints**
   - `GET /api/rules` → `{ rules, rooms, tasks }`(規則 + 房間 id→名 + task 名單)
@@ -60,7 +60,7 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
 
 ## RESUME HERE
 
-**目前進度:尚未開始 S1。** 下一步:建立 task 清單,開始 S1(taskDefs.taskNames + rules.saveRules + 測試)。
+**目前進度:S1、S2 完成並 commit。** 下一步:S3 — 在 `dashboard/server.js` 加 `GET /api/rules`(回 `{rules, rooms, tasks}`)與 `PUT /api/rules`(驗證後 saveRules),並在 `dashboardServer.test.js` 補測試。
 
 ## 注意事項 / 雷
 
