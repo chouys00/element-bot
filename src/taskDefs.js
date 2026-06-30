@@ -77,4 +77,4 @@ function getTaskDef(name) {
 // 各 skill 真實專案的根目錄,供 dashboard 的「開啟專案」白名單檢查用。
 const PROJECT_ROOTS = [FTL_ROOT, DEMO_ROOT];
 
-module.exports = { getTaskDef, DEFS, PROJECT_ROOTS };
+module.exports = { getTaskDef, PROJECT_ROOTS };
