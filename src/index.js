@@ -8,6 +8,20 @@ const { pruneOldDevices } = require("./devices");
 const { normalize } = require("./normalize");
 const { shouldCapture, toRecord } = require("./handler");
 const { writeEvent, OUTPUT_FILE } = require("./writer");
+const { loadRules } = require("./rules");
+const { runTriggerPipeline } = require("./trigger");
+const { judge } = require("./judge");
+const { enqueueTask } = require("./enqueue");
+const path = require("path");
+const { startHeartbeat } = require("./heartbeat");
+const {
+  writeRoomsSidecar,
+  buildRoomEntries,
+  readRoomsMap,
+  mergeRoomEntries,
+  collectQueueRoomIds,
+  resolveRoomNames,
+} = require("./roomsSidecar");
 
 // 等待首次 sync 完成(PREPARED),crypto 才會有自己的 public identity 可供建立信任。
 function waitForPrepared(client) {
@@ -33,6 +47,18 @@ async function main() {
     recoveryKey: config.recoveryKey,
   });
 
+  let rules = [];
+  try {
+    rules = loadRules(config.rulesPath);
+    console.log(`[element-bot] 載入 ${rules.length} 條觸發規則`);
+  } catch (e) {
+    console.warn("[element-bot] 規則載入失敗,觸發功能停用:", e.message);
+  }
+
+  // 用 claude CLI(headless）做 LLM 判斷,吃目前登入帳號的 quota,不需 API key。
+  // CLI 不存在/逾時/非零 exit 會丟錯,被 trigger 的 per-rule try/catch 接住 → 該則不觸發,bot 照常。
+  const judgeFn = async (rule, message) => judge(rule, message);
+
   const seen = new Set(); // 以 event_id 去重(timeline 與 Decrypted 可能各觸發一次)
   const startTs = Date.now();
 
@@ -48,6 +74,16 @@ async function main() {
       seen.add(rec.event_id);
       writeEvent(toRecord(rec.room_id, rec));
       console.log(`[element-bot] 已擷取 ${rec.room_id} <- ${rec.sender}: ${String(rec.content.body).slice(0, 80)}`);
+      try {
+        await runTriggerPipeline(rec, {
+          rules,
+          judgeFn,
+          enqueueFn: (task) => enqueueTask(config.queueDir, task),
+          logger: console,
+        });
+      } catch (err) {
+        console.error("[element-bot] 觸發管線錯誤(不影響擷取):", err.message);
+      }
     } catch (err) {
       console.error("[element-bot] 處理事件錯誤:", err);
     }
@@ -67,10 +103,35 @@ async function main() {
     await processEvent(event);
   });
 
+  // 只向伺服器訂閱指定房間的 room 事件(節省傳輸)。
+  // to_device 是 sync 頂層欄位,不受 room filter 影響,E2EE 金鑰交換正常。
+  const roomFilter = new sdk.Filter(session.userId);
+  roomFilter.setDefinition({ room: { rooms: config.roomIds } });
+
   // 先啟動 sync 並等 PREPARED,讓 crypto 取得自身 identity,再建立信任。
   console.log("[element-bot] 啟動 sync...");
-  await client.startClient({ initialSyncLimit: 1 });
+  await client.startClient({ initialSyncLimit: 1, filter: roomFilter });
   await waitForPrepared(client);
+
+  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
+  // 房間名稱 sidecar:累積合併(不覆寫已知名稱),並替佇列中出現、
+  // 但不在當前監聽清單的房間(含歷史任務)補查名稱,讓 dashboard 不顯示裸 room_id。
+  const updateRooms = async () => {
+    try {
+      let merged = mergeRoomEntries(readRoomsMap(STORAGE_DIR), buildRoomEntries(client, config.roomIds));
+      const missing = collectQueueRoomIds(config.queueDir).filter((id) => !merged[id] || merged[id] === id);
+      if (missing.length) {
+        merged = mergeRoomEntries(merged, await resolveRoomNames(client, missing));
+      }
+      writeRoomsSidecar(STORAGE_DIR, merged);
+    } catch (e) {
+      console.warn("[element-bot] 寫 rooms.json 失敗:", e.message);
+    }
+  };
+  updateRooms();
+  client.on(sdk.RoomEvent.Name, updateRooms);
+  // 心跳:每 30s 寫一次存活時間戳,供儀表板判斷 bot 是否在線。
+  startHeartbeat(STORAGE_DIR, 30000);
 
   console.log("[element-bot] 用 recovery key 建立裝置信任 + 還原 key backup...");
   await establishTrust(client, { userId: config.userId, password: config.password });

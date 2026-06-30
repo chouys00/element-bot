@@ -1,0 +1,9 @@
+[
+  {
+    "name": "改背景色",
+    "keywords": ["背景", "改顏色", "demo"],
+    "task": "demo-skill",
+    "use_llm": false,
+    "extract": []
+  }
+]
