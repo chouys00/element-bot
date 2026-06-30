@@ -8,7 +8,7 @@ const path = require("path");
 //   prompt(task)    -> 餵給 claude -p 的無人值守指示(叫 claude 讀該專案的 SKILL.md 並執行)
 //   verifyArgs(src) -> ["py","-3",script,src,locale] 之類;null=不 verify(交由專案自理)
 //   needsReview     -> 完成後要人補/核對的提示
-//   artifacts       -> (選填,僅供參考)成敗改由 git 是否有改動判斷,非靠此欄
+// 成敗一律由 git 是否有改動判斷,不再宣告預期產物。
 // const FTL_ROOT = process.env.NSL_FTL_ROOT || "D:/ftl/ftl/ftl";
 const FTL_ROOT = process.env.NSL_FTL_ROOT || "D:/GB/PC/ftl/ftl";
 const I18N_SKILL_DIR = process.env.NSL_SKILL_DIR || path.join(FTL_ROOT, ".cursor/skills/template-i18n-inject");
@@ -35,8 +35,7 @@ const DEFS = {
       "依 SKILL.md 自行判斷單/多語系,把中文文案轉成 data-i18n 標記、產生 i18n/<語系>.json。",
       "安全紅線:只准讀寫當前工作目錄(及其子目錄);不可修改當前目錄以外任何檔案。產完翻譯檔即可,不需自行 verify。",
     ].join(""),
-    artifacts: ["i18n/zh_CN.json"],
-    verifyArgs: (copyDir) => [process.env.NSL_PY || "py", "-3", path.join(I18N_SKILL_DIR, "scripts", "verify_i18n.py"), copyDir, "zh_CN"],
+    verifyArgs: (srcDir) => [process.env.NSL_PY || "py", "-3", path.join(I18N_SKILL_DIR, "scripts", "verify_i18n.py"), srcDir, "zh_CN"],
     needsReview: ["請人工核對文案正確性(verify 只驗結構不驗文意)", "套用到正式站前再次確認"],
   },
 
@@ -75,4 +74,7 @@ function getTaskDef(name) {
   return def;
 }
 
-module.exports = { getTaskDef, DEFS };
+// 各 skill 真實專案的根目錄,供 dashboard 的「開啟專案」白名單檢查用。
+const PROJECT_ROOTS = [FTL_ROOT, DEMO_ROOT];
+
+module.exports = { getTaskDef, DEFS, PROJECT_ROOTS };

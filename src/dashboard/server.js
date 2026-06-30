@@ -5,6 +5,7 @@ const path = require("path");
 const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS } = require("./aggregate");
 const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
+const { PROJECT_ROOTS } = require("../taskDefs");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -43,11 +44,12 @@ function createServer(deps) {
           if (m[2] === "open") {
             const prog = parseProgress(queueDir, id);
             const openPath = prog.summary && prog.summary.openPath;
-            const workRoot = path.join(queueDir, "work");
             const resolved = openPath ? path.resolve(openPath) : "";
-            if (!resolved || !(resolved === path.resolve(workRoot) || resolved.startsWith(path.resolve(workRoot) + path.sep))) {
-              res.writeHead(400); return res.end("bad path");
-            }
+            const inKnownRoot = resolved && PROJECT_ROOTS.some((root) => {
+              const r = path.resolve(root);
+              return resolved === r || resolved.startsWith(r + path.sep);
+            });
+            if (!inKnownRoot) { res.writeHead(400); return res.end("bad path"); }
             const opener = process.platform === "win32" ? "explorer" : process.platform === "darwin" ? "open" : "xdg-open";
             require("child_process").spawn(opener, [resolved], { detached: true, stdio: "ignore" }).unref();
             return sendJson(res, 200, { ok: true });

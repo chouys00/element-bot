@@ -20,7 +20,7 @@ function writeLog(q, id, lines) {
 {
   const q = freshQueue();
   writeLog(q, "j1", [
-    { steps: [{ key: "prepare", label: "準備隔離副本" }, { key: "ai_run", label: "AI 產生產物" }] },
+    { steps: [{ key: "prepare", label: "檢查本體 git" }, { key: "ai_run", label: "AI 改動本體" }] },
     { step: "prepare", status: "run" },
     { step: "prepare", status: "ok", ms: 120 },
     { step: "ai_run", status: "run" },

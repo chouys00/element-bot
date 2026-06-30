@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { STEPS, initState, readState, writeState, markStep } = require("./checkpoint");
 
-const STEP_LABELS = { prepare: "準備隔離副本", ai_run: "AI 產生產物", verify: "檢查產物", summarize: "彙總結果" };
+const STEP_LABELS = { prepare: "檢查本體 git", ai_run: "AI 改動本體", verify: "驗證改動", summarize: "彙總結果" };
 
 // 對 queue/logs/<id>.log append 一行 NDJSON(印完即落地)。
 function appendLog(queueDir, id, obj) {

@@ -10,7 +10,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("找得到 i18n-skill", !!def);
   ok("有 sourceDir 函式", typeof def.sourceDir === "function");
   ok("有 prompt 函式", typeof def.prompt === "function");
-  ok("有 artifacts 陣列", Array.isArray(def.artifacts));
+  ok("有 verifyArgs 函式", typeof def.verifyArgs === "function");
   ok("prompt 含站點目錄指示", def.prompt({ params: { 站點: "siteA" } }).includes("當前工作目錄"));
 }
 {
