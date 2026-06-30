@@ -31,7 +31,7 @@
   tr.task:hover { background: #1f232b; }
   tr.task.sel { background: #283041; }
   .badge { padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; }
-  .pending { background: #9ca3af; } .processing { background: #3b82f6; } .done { background: #22c55e; } .failed { background: #ef4444; }
+  .pending { background: #9ca3af; } .processing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed { background: #ef4444; }
   pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   .muted { color: #777; }
   .k { color: #889; display: inline-block; min-width: 64px; }
@@ -66,9 +66,15 @@
 </main>
 
 <script>
-const STATUS_LABEL = { pending: "待處理", processing: "進行中", done: "完成", failed: "失敗" };
+const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗" };
 let selectedId = null;
 let lastTasks = [];
+
+// 顯示用狀態:done 但尚未驗收 → 待驗收(review);已驗收 → 完成(done)。
+function displayStatus(t) {
+  if (t.status === "done") return t.verified ? "done" : "review";
+  return t.status;
+}
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function timeOf(t) { return t ? new Date(t).toLocaleTimeString("zh-Hant", { hour12: false }) : "—"; }
@@ -92,8 +98,10 @@ async function refresh() {
 function renderStatus(s) {
   document.getElementById("botStatus").textContent = s.bot_online ? "🟢 bot 連線中" : "🔴 bot 離線";
   const c = s.counts || {};
+  const review = c.review || 0;
+  const finished = (c.done || 0) - review; // 完成 = done 之中已驗收的
   document.getElementById("counts").innerHTML =
-    `<span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>完成 ${c.done || 0}</span><span>失敗 ${c.failed || 0}</span>`;
+    `<span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>待驗收 ${review}</span><span>完成 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
 }
 
 function renderMsgs(msgs) {
@@ -112,7 +120,7 @@ function renderTasks(tasks) {
       <td title="${esc(t.room_name)}">${esc(t.room_name)}</td>
       <td title="${esc(t.sender)}">${esc(t.sender)}</td>
       <td title="${esc(ruleTask)}">${esc(ruleTask)}</td>
-      <td>${badge(t.status)}</td></tr>`;
+      <td>${badge(displayStatus(t))}</td></tr>`;
   }).join("") || `<tr><td style="grid-column:span 5" class="muted">（尚無觸發的任務）</td></tr>`;
 
   document.querySelectorAll("tr.task").forEach((tr) => tr.addEventListener("click", () => selectTask(tr.dataset.id)));
@@ -150,7 +158,7 @@ async function renderDetail() {
     : "";
 
   box.innerHTML = `
-    <div><span class="k">狀態</span> ${badge(t.status)}</div>
+    <div><span class="k">狀態</span> ${badge(displayStatus(t))}</div>
     <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>
     <div><span class="k">規則</span> ${esc(t.rule)} → ${esc(t.task)}</div>

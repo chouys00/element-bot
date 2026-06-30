@@ -9,18 +9,23 @@ function gitClean(srcDir) {
   if ((r.stdout || "").trim()) throw new Error("來源有未提交改動,請先 commit/還原:" + srcDir);
 }
 
-// 複製整棵樹到隔離副本(先清空目的地)。
-function copyTree(srcDir, destDir) {
-  if (!fs.existsSync(srcDir)) throw new Error("找不到來源:" + srcDir);
-  fs.rmSync(destDir, { recursive: true, force: true });
-  fs.cpSync(srcDir, destDir, { recursive: true });
+// 列出工作區相對 HEAD 的改動檔(porcelain),用來判斷 SKILL 是否真的改了本體。
+function gitChanged(srcDir) {
+  const r = spawnSync("git", ["status", "--porcelain"], { cwd: srcDir, encoding: "utf8" });
+  if (r.error) throw r.error;
+  if (r.status !== 0) throw new Error("無法讀取 git 狀態(來源不在 git 控制下?):" + srcDir);
+  return (r.stdout || "")
+    .split("\n")
+    .map((l) => l.replace(/\r$/, ""))
+    .filter((l) => l.trim())
+    .map((l) => l.slice(3).trim()); // porcelain:前兩字元狀態 + 空格,其後為路徑
 }
 
-// 在隔離副本內跑 headless claude;非零 exit 丟錯。
-function runClaude(prompt, copyDir) {
+// 在專案目錄(本體)內跑 headless claude;非零 exit 丟錯。
+function runClaude(prompt, projectDir) {
   const r = spawnSync("claude", ["--dangerously-skip-permissions", "-p"], {
     input: prompt,
-    cwd: copyDir, encoding: "utf8",
+    cwd: projectDir, encoding: "utf8",
     shell: process.platform === "win32",
     timeout: parseInt(process.env.AI_TIMEOUT_MS || "1800000", 10),
   });
@@ -38,4 +43,4 @@ function runVerify(args) {
   return { errors: parseInt(m[1], 10), warnings: parseInt(m[2], 10) };
 }
 
-module.exports = { gitClean, copyTree, runClaude, runVerify };
+module.exports = { gitClean, gitChanged, runClaude, runVerify };

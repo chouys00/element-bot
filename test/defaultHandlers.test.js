@@ -1,98 +1,71 @@
 "use strict";
 const assert = require("assert");
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
 const { make } = require("../src/executors/defaultHandlers");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
-
-function freshWork() {
-  const d = path.join(os.tmpdir(), `dh-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
-  fs.mkdirSync(path.join(d, "copy"), { recursive: true });
-  return d;
-}
 const noop = () => {};
 
 (async () => {
-  // ai_run:產物已存在 → 不呼叫 claude
+  // prepare:唯讀檢查本體 git 乾淨(呼叫 gitClean),不複製
   {
-    const workDir = freshWork();
-    fs.mkdirSync(path.join(workDir, "copy", "i18n"), { recursive: true });
-    fs.writeFileSync(path.join(workDir, "copy", "i18n", "zh_CN.json"), "{}", "utf8");
-    let claudeCalled = false;
-    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: () => { claudeCalled = true; }, runVerify: () => ({ errors: 0, warnings: 0 }) };
+    const calls = [];
+    const ops = { gitClean: () => calls.push("git"), runClaude: () => calls.push("claude"), runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    await h.ai_run({ workDir, task: { task: "i18n-skill" }, emit: noop, shared: {} });
-    ok("產物已存在不跑 claude", claudeCalled === false);
-    fs.rmSync(workDir, { recursive: true, force: true });
+    await h.prepare({ task: { task: "demo-skill" }, emit: noop, shared: {} });
+    ok("prepare 只 gitClean、不複製", calls.join(",") === "git");
   }
-  // ai_run:產物不存在 → 呼叫 claude
-  {
-    const workDir = freshWork();
-    let claudeCalled = false;
-    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: () => { claudeCalled = true; }, runVerify: () => ({ errors: 0, warnings: 0 }) };
-    const h = make(ops);
-    await h.ai_run({ workDir, task: { task: "i18n-skill" }, emit: noop, shared: {} });
-    ok("產物缺則跑 claude", claudeCalled === true);
-    fs.rmSync(workDir, { recursive: true, force: true });
-  }
-  // verify errors>0 → summarize 回 NEEDS;errors=0 → OK
-  {
-    const workDir = freshWork();
-    fs.mkdirSync(path.join(workDir, "copy", "i18n"), { recursive: true });
-    fs.writeFileSync(path.join(workDir, "copy", "i18n", "zh_CN.json"), "{}", "utf8");
-    const shared = {};
-    const okOps = { gitClean: () => {}, copyTree: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 0, warnings: 1 }) };
-    let h = make(okOps);
-    await h.verify({ workDir, task: { task: "i18n-skill" }, emit: noop, shared });
-    let sum = await h.summarize({ workDir, task: { task: "i18n-skill" }, emit: noop, shared });
-    ok("errors=0 → OK", sum.status === "OK" && Array.isArray(sum.needsReview));
 
-    const badOps = { gitClean: () => {}, copyTree: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 3, warnings: 0 }) };
-    const shared2 = {};
-    h = make(badOps);
-    await h.verify({ workDir, task: { task: "i18n-skill" }, emit: noop, shared: shared2 });
-    sum = await h.summarize({ workDir, task: { task: "i18n-skill" }, emit: noop, shared: shared2 });
-    ok("errors>0 → NEEDS", sum.status === "NEEDS");
-    fs.rmSync(workDir, { recursive: true, force: true });
-  }
-  // prepare:呼叫 gitClean 再 copyTree
+  // ai_run:把 claude 帶進真實專案,prompt 指向 SKILL.md、cwd 為目標專案
   {
-    const workDir = freshWork();
-    const order = [];
-    const ops = { gitClean: () => order.push("git"), copyTree: () => order.push("copy"), runClaude: () => {}, runVerify: () => ({ errors: 0 }) };
+    let prompt = null, cwd = null;
+    const ops = { gitClean: () => {}, runClaude: (p, dir) => { prompt = p; cwd = dir; }, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    await h.prepare({ workDir, task: { task: "i18n-skill" }, emit: noop, shared: {} });
-    ok("prepare 先 git 再 copy", order.join(",") === "git,copy");
-    fs.rmSync(workDir, { recursive: true, force: true });
+    await h.ai_run({ task: { task: "demo-skill", source: { body: "把背景改成紅色" } }, emit: noop, shared: {} });
+    ok("ai_run 呼叫 claude", prompt !== null);
+    ok("ai_run prompt 指向 SKILL.md", typeof prompt === "string" && prompt.includes("SKILL.md"));
+    ok("ai_run cwd 為目標專案(sample-app)", typeof cwd === "string" && cwd.endsWith("sample-app"));
   }
-  // summarize:沒有任何產物 → ERROR
+
+  // verify:verifyArgs null → 直接 errors:0,不呼叫 runVerify
   {
-    const workDir = freshWork(); // copy 內無 i18n/zh_CN.json
-    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 0 }) };
+    let verifyCalled = false;
+    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => { verifyCalled = true; return { errors: 0 }; }, gitChanged: () => ["index.html"] };
     const h = make(ops);
-    const sum = await h.summarize({ workDir, task: { task: "i18n-skill" }, emit: noop, shared: {} });
-    ok("無產物 → ERROR", sum.status === "ERROR");
-    fs.rmSync(workDir, { recursive: true, force: true });
-  }
-  // demo-skill:ai_run 走 claude(讀專案 SKILL.md),prompt 指向 SKILL.md 並帶聊天指令
-  {
-    const workDir = freshWork();
-    let claudePrompt = null;
-    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: (p) => { claudePrompt = p; }, runVerify: () => ({ errors: 0 }) };
-    const h = make(ops);
-    await h.ai_run({ workDir, task: { task: "demo-skill", source: { body: "把背景改成紅色" } }, emit: noop, shared: {} });
-    ok("demo-skill ai_run 呼叫 claude", claudePrompt !== null);
-    ok("demo-skill prompt 指向 SKILL.md", typeof claudePrompt === "string" && claudePrompt.includes("SKILL.md"));
-    // 模擬 claude 讀 SKILL.md 後產出 result.json,summarize → OK
-    fs.writeFileSync(path.join(workDir, "copy", "result.json"), "{}", "utf8");
     const shared = {};
-    await h.verify({ workDir, task: { task: "demo-skill" }, emit: noop, shared });
-    const sum = await h.summarize({ workDir, task: { task: "demo-skill" }, emit: noop, shared });
-    ok("demo-skill summarize → OK 含 result.json", sum.status === "OK" && sum.produced.includes("result.json"));
-    fs.rmSync(workDir, { recursive: true, force: true });
+    await h.verify({ task: { task: "demo-skill" }, emit: noop, shared });
+    ok("demo-skill verifyArgs null 不呼叫 runVerify", verifyCalled === false && shared.verify.errors === 0);
   }
+
+  // summarize:本體有改動 + verify errors=0 → OK
+  {
+    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => ["index.html"] };
+    const h = make(ops);
+    const shared = {};
+    await h.verify({ task: { task: "demo-skill" }, emit: noop, shared });
+    const sum = await h.summarize({ task: { task: "demo-skill" }, emit: noop, shared });
+    ok("有改動 → OK", sum.status === "OK" && sum.produced.includes("index.html"));
+    ok("OK 帶 needsReview", Array.isArray(sum.needsReview));
+  }
+
+  // summarize:本體無改動 → ERROR(SKILL 沒做事)
+  {
+    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const h = make(ops);
+    const sum = await h.summarize({ task: { task: "demo-skill" }, emit: noop, shared: {} });
+    ok("無改動 → ERROR", sum.status === "ERROR");
+  }
+
+  // summarize:有改動但 verify errors>0 → NEEDS(用 i18n-skill,有 verifyArgs)
+  {
+    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 3, warnings: 0 }), gitChanged: () => ["i18n/zh_CN.json"] };
+    const h = make(ops);
+    const task = { task: "i18n-skill", params: { 站點: "siteA" } };
+    const shared = {};
+    await h.verify({ task, emit: noop, shared });
+    const sum = await h.summarize({ task, emit: noop, shared });
+    ok("verify errors>0 → NEEDS", sum.status === "NEEDS");
+  }
+
   console.log(`defaultHandlers.test.js: ${passed} 項通過 ✅`);
 })().catch((e) => { console.error(e); process.exit(1); });

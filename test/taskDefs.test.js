@@ -29,7 +29,6 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("demo-skill 有 prompt 函式", typeof def.prompt === "function");
   ok("demo-skill prompt 指向 SKILL.md", def.prompt({ source: { body: "把背景改成紅色" } }).includes("SKILL.md"));
   ok("demo-skill prompt 帶入聊天指令", def.prompt({ source: { body: "把背景改成紅色" } }).includes("把背景改成紅色"));
-  ok("demo-skill 產物為 result.json", Array.isArray(def.artifacts) && def.artifacts.includes("result.json"));
   ok("demo-skill 不跑 verify(verifyArgs null)", def.verifyArgs == null);
   ok("demo-skill 預設專案 sample-app", def.sourceDir({ params: {} }).endsWith("sample-app"));
   let threw = false;

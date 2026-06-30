@@ -47,12 +47,16 @@ function collectTasks(queueDir, roomsMap, limit) {
   return typeof limit === "number" ? out.slice(0, limit) : out;
 }
 
-// 各狀態目錄的 .json 數量。
+// 各狀態目錄的 .json 數量。額外給 review = done 但尚未驗收的數量(供「待驗收 / 完成」拆分)。
 function statusCounts(queueDir) {
-  const counts = { pending: 0, processing: 0, done: 0, failed: 0 };
+  const counts = { pending: 0, processing: 0, done: 0, failed: 0, review: 0 };
   for (const status of STATUS_DIRS) {
     try {
-      counts[status] = fs.readdirSync(path.join(queueDir, status)).filter((f) => f.endsWith(".json")).length;
+      const files = fs.readdirSync(path.join(queueDir, status)).filter((f) => f.endsWith(".json"));
+      counts[status] = files.length;
+      if (status === "done") {
+        counts.review = files.filter((f) => !isVerified(queueDir, f.replace(/\.json$/, ""))).length;
+      }
     } catch (_) {}
   }
   return counts;
