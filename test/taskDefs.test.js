@@ -23,5 +23,16 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   try { getTaskDef("i18n-skill").sourceDir({ params: { 站點: "../evil" } }); } catch (_) { threw = true; }
   ok("站點逸出 FTL_ROOT 丟錯", threw);
 }
+{
+  const def = getTaskDef("demo-skill");
+  ok("找得到 demo-skill", !!def);
+  ok("demo-skill 有 run 函式", typeof def.run === "function");
+  ok("demo-skill 產物為 result.json", Array.isArray(def.artifacts) && def.artifacts.includes("result.json"));
+  ok("demo-skill 不跑 verify(verifyArgs null)", def.verifyArgs == null);
+  ok("demo-skill 預設專案 sample-app", def.sourceDir({ params: {} }).endsWith("sample-app"));
+  let threw = false;
+  try { def.sourceDir({ params: { 專案: "../evil" } }); } catch (_) { threw = true; }
+  ok("專案逸出 DEMO_ROOT 丟錯", threw);
+}
 
 console.log(`taskDefs.test.js: ${passed} 項通過 ✅`);

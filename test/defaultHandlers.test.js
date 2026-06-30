@@ -77,5 +77,21 @@ const noop = () => {};
     ok("無產物 → ERROR", sum.status === "ERROR");
     fs.rmSync(workDir, { recursive: true, force: true });
   }
+  // demo-skill:ai_run 走 def.run(本地動作),產出 result.json,不呼叫 claude
+  {
+    const workDir = freshWork();
+    let claudeCalled = false;
+    const ops = { gitClean: () => {}, copyTree: () => {}, runClaude: () => { claudeCalled = true; }, runVerify: () => ({ errors: 0 }) };
+    const h = make(ops);
+    await h.ai_run({ workDir, task: { task: "demo-skill", params: { 改動: "測試一下" } }, emit: noop, shared: {} });
+    ok("demo-skill 不呼叫 claude", claudeCalled === false);
+    ok("demo-skill 產出 result.json", fs.existsSync(path.join(workDir, "copy", "result.json")));
+    ok("demo-skill 改了 CHANGELOG.md", fs.existsSync(path.join(workDir, "copy", "CHANGELOG.md")));
+    const shared = {};
+    await h.verify({ workDir, task: { task: "demo-skill" }, emit: noop, shared });
+    const sum = await h.summarize({ workDir, task: { task: "demo-skill" }, emit: noop, shared });
+    ok("demo-skill summarize → OK 含 result.json", sum.status === "OK" && sum.produced.includes("result.json"));
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
   console.log(`defaultHandlers.test.js: ${passed} 項通過 ✅`);
 })().catch((e) => { console.error(e); process.exit(1); });

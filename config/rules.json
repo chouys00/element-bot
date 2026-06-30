@@ -1,10 +1,9 @@
 [
   {
-    "name": "防偵測i18n",
-    "keywords": ["防偵測", "i18n", "翻譯檔"],
-    "task": "i18n-skill",
-    "use_llm": true,
-    "intent": "有人要求對某站點做防偵測 / 產生 i18n 翻譯檔時才觸發;單純討論或回顧則不要",
-    "extract": ["站點"]
+    "name": "模擬改動",
+    "keywords": ["模擬改動", "改動專案", "demo"],
+    "task": "demo-skill",
+    "use_llm": false,
+    "extract": ["專案", "改動"]
   }
 ]
