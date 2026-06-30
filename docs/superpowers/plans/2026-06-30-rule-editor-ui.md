@@ -50,10 +50,10 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
   - 規則列表 + 新增/編輯/刪除 + 儲存全部(整批 PUT)
   - 表單:name / keywords(逗號分隔)/ task(下拉)/ rooms(多選房名→存 id,不選=全部)/ use_llm(勾)/ intent+extract(use_llm 時顯示)
   - 已用 curl 驗證 GET /api/rules 對真實檔正常、/rules.html 回 200(PUT 不動真實檔,留 S6 瀏覽器驗)
-- [ ] **S5. 熱載入**
-  - 新模組 `rulesWatcher.js`:`watch(rulesPath, onReload)` 含 debounce;reload 邏輯抽成可測函式
-  - `index.js`:rules 改可變持有者;watch 成功 swap、失敗保留舊規則 + log
-  - 測試:reload 判斷邏輯(壞檔保留舊、好檔換新)
+- [x] **S5. 熱載入** ✅
+  - 新模組 `src/rulesWatcher.js`:`watchRules`(watch 目錄+檔名過濾+debounce,撐過 tmp+rename)、`reloadRules`(成功回新/失敗回舊)
+  - `index.js`:接 watchRules,onChange 時 `rules = reloadRules(...)`(rules 是 let,閉包即時生效)
+  - 測試:`rulesWatcher.test.js` 6 項(好檔換新/壞檔保留舊/非法保留舊/watch 偵測變動);全套 230 項通過
 - [ ] **S6. 端到端手動驗證**
   - 重啟三件套 → UI 新增帶 rooms 的規則 → 存檔 → 確認 bot log 顯示「已重載」→ 發訊息驗證房間範圍(補做之前緩驗的部分)
 
@@ -61,7 +61,13 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
 
 ## RESUME HERE
 
-**目前進度:S1–S4 完成並 commit。全套 224 項通過,dashboard 已重啟跑新碼。** 下一步:S5 — 熱載入。新模組 `src/rulesWatcher.js`:`watch(rulesPath, onReload)` 含 debounce;`index.js` 把 `rules` 從常數改可變持有者(用物件或閉包包起來,讓 trigger 拿到最新),watch 觸發時重讀 loadRules,成功 swap、失敗保留舊規則 + log。reload 判斷邏輯抽成可測純函式(壞檔保留舊、好檔換新),加 `test/rulesWatcher.test.js` 並併進 package.json test script。
+**目前進度:S1–S5 全部完成並 commit。全套 230 項通過。** 程式碼部分(後端+前端+熱載入)已全做完。
+剩 **S6:端到端手動驗證**(需使用者操作瀏覽器 + Element 發訊息):
+1. 重啟三件套(bot 要重啟才會載入 index.js 的 watcher;dashboard 已是新碼但保險起見一起重啟)
+2. 瀏覽器開 http://127.0.0.1:3000 →「⚙ 規則設定」→ 新增一條帶 rooms 的規則(用下拉選實際房間)→ 儲存
+3. 確認 bot log 出現「已熱載入 N 條規則」(免重啟生效)
+4. 去 Element 對「有設 rooms」與「沒設 rooms」的房間分別發關鍵字訊息,驗證房間範圍過濾正確(補做之前緩驗的房間範圍)
+完成後即可開 PR(這條分支基於 feat/rule-room-scoping;注意 PR base 與分支鏈)。
 
 ## 注意事項 / 雷
 
