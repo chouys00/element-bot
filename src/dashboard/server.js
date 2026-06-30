@@ -5,7 +5,8 @@ const path = require("path");
 const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS } = require("./aggregate");
 const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
-const { PROJECT_ROOTS } = require("../taskDefs");
+const { PROJECT_ROOTS, taskNames } = require("../taskDefs");
+const { loadRules, saveRules } = require("../rules");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -19,12 +20,27 @@ function sendJson(res, code, obj) {
 
 function safeId(id) { return id.length > 0 && !(id.includes("..") || id.includes("/") || id.includes("\\") || id.includes("\0")); }
 
+// 讀取 request body(有上限,避免被灌爆)。
+function readBody(req, limit = 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > limit) { req.destroy(); reject(new Error("body too large")); return; }
+      data += c;
+    });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
+
 const CONTENT_TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
 
 // deps = { queueDir, storageDir, outputFile }
 function createServer(deps) {
-  const { queueDir, storageDir, outputFile } = deps;
-  return http.createServer((req, res) => {
+  const { queueDir, storageDir, outputFile, rulesPath } = deps;
+  return http.createServer(async (req, res) => {
     const p = new URL(req.url, "http://localhost").pathname;
     try {
       if (req.method === "POST") {
@@ -63,6 +79,23 @@ function createServer(deps) {
           return sendJson(res, 200, { ok: true });
         }
         res.writeHead(404); return res.end("not found");
+      }
+      // 規則編輯:GET 讀回 { 規則, 房間 id→名, 可用 task 名單 };PUT 整批驗證後存回。
+      if (p === "/api/rules") {
+        if (req.method === "GET") {
+          let rules = [];
+          try { rules = loadRules(rulesPath); } catch (_) {} // 檔不存在/壞掉 → 給空陣列,讓 UI 從零開始
+          return sendJson(res, 200, { rules, rooms: readRoomsMap(storageDir), tasks: taskNames() });
+        }
+        if (req.method === "PUT") {
+          let raw;
+          try { raw = await readBody(req); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+          let parsed;
+          try { parsed = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          try { saveRules(rulesPath, parsed); } catch (e) { res.writeHead(400); return res.end(String((e && e.message) || e)); }
+          return sendJson(res, 200, { ok: true });
+        }
+        res.writeHead(405); return res.end("method not allowed");
       }
       if (p === "/api/tasks") {
         return sendJson(res, 200, collectTasks(queueDir, readRoomsMap(storageDir), TASKS_LIMIT));

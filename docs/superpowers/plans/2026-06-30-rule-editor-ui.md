@@ -41,10 +41,10 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
   - 測試:rules 21 項、taskDefs 17 項通過
 - [x] **S2. config** ✅
   - `loadDashboardConfig` 補 `rulesPath`(目前只有 loadConfig 有)
-- [ ] **S3. server endpoints**
+- [x] **S3. server endpoints** ✅
   - `GET /api/rules` → `{ rules, rooms, tasks }`(規則 + 房間 id→名 + task 名單)
   - `PUT /api/rules` → body 整個陣列;驗證後 saveRules;非法回 400 不寫檔
-  - 測試:GET 讀回正確 / PUT 合法寫入 / PUT 非法回 400 且檔案不變
+  - 測試:dashboardServer 29 項通過(含 GET/PUT 合法/非法/壞 JSON)
 - [ ] **S4. 前端新分頁**
   - `public/rules.html` + `public/rules.js`;index.html 互加導航連結
   - 規則列表 + 新增/編輯/刪除 + 儲存全部
@@ -60,7 +60,7 @@ bot 端用 `fs.watch` 熱載入,存檔即生效、免重啟。
 
 ## RESUME HERE
 
-**目前進度:S1、S2 完成並 commit。** 下一步:S3 — 在 `dashboard/server.js` 加 `GET /api/rules`(回 `{rules, rooms, tasks}`)與 `PUT /api/rules`(驗證後 saveRules),並在 `dashboardServer.test.js` 補測試。
+**目前進度:S1、S2、S3 完成並 commit。全套 224 項通過。** 下一步:S4 — 前端新分頁 `public/rules.html` + `public/rules.js`,index.html 互加導航連結。打 `GET /api/rules` 載入,編輯後 `PUT /api/rules` 整批存。表單欄位見清單 S4。純 HTML/JS、沿用 index.html 風格。
 
 ## 注意事項 / 雷
 
