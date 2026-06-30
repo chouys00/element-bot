@@ -47,6 +47,8 @@ async function main() {
     recoveryKey: config.recoveryKey,
   });
 
+  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
+
   let rules = [];
   try {
     rules = loadRules(config.rulesPath);
@@ -80,6 +82,7 @@ async function main() {
           judgeFn,
           enqueueFn: (task) => enqueueTask(config.queueDir, task),
           logger: console,
+          roomsMap: readRoomsMap(STORAGE_DIR), // 供規則用「房間顯示名」限定範圍時翻譯比對
         });
       } catch (err) {
         console.error("[element-bot] 觸發管線錯誤(不影響擷取):", err.message);
@@ -113,7 +116,6 @@ async function main() {
   await client.startClient({ initialSyncLimit: 1, filter: roomFilter });
   await waitForPrepared(client);
 
-  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
   // 房間名稱 sidecar:累積合併(不覆寫已知名稱),並替佇列中出現、
   // 但不在當前監聽清單的房間(含歷史任務)補查名稱,讓 dashboard 不顯示裸 room_id。
   const updateRooms = async () => {

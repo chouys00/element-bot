@@ -16,6 +16,12 @@ function validateRule(rule, index) {
       throw new Error(`${where}.extract 必須為非空字串陣列`);
     }
   }
+  // rooms:選填。限定此規則只在這些房間生效;元素可填 room_id 或房間顯示名。缺省/空陣列=全部房間。
+  if (rule.rooms !== undefined) {
+    if (!Array.isArray(rule.rooms) || !rule.rooms.every((r) => typeof r === "string" && r)) {
+      throw new Error(`${where}.rooms 必須為非空字串陣列(room_id 或房間顯示名)`);
+    }
+  }
   return true;
 }
 

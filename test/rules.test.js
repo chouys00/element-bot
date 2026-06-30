@@ -28,6 +28,11 @@ throws("use_llm 非布林被拒", () => validateRule({ ...good, use_llm: "yes" }
 throws("use_llm:true 但缺 intent 被拒", () => validateRule({ ...good, use_llm: true }, 0));
 throws("extract 非字串陣列被拒", () => validateRule({ ...good, extract: [1, 2] }, 0));
 
+ok("rooms 字串陣列通過", validateRule({ ...good, rooms: ["!r:s", "前端群"] }, 0) === true);
+ok("rooms 省略通過", validateRule(good, 0) === true);
+throws("rooms 非字串陣列被拒", () => validateRule({ ...good, rooms: [1] }, 0));
+throws("rooms 含空字串被拒", () => validateRule({ ...good, rooms: ["ok", ""] }, 0));
+
 const tmp = path.join(os.tmpdir(), `rules-test-${Date.now()}.json`);
 fs.writeFileSync(tmp, JSON.stringify([good]), "utf8");
 const loaded = loadRules(tmp);
