@@ -1,25 +1,22 @@
 "use strict";
 const { matchRules } = require("./matcher");
-const { translateRoom } = require("./roomsSidecar");
 
-// 規則的房間範圍判斷:rule.rooms 缺省/空 = 全部房間;否則該訊息的 room_id
-// 或其顯示名須落在清單內(同時接受 room_id 與顯示名,避免顯示名未學到時被卡死)。
-function ruleMatchesRoom(rule, roomId, roomsMap) {
+// 規則的房間範圍判斷:rule.rooms 缺省/空 = 全部房間;否則該訊息的 room_id 須落在清單內。
+// 只認 room_id(全域唯一);房間顯示名可能重複,不拿來比對以免靜默誤觸發。
+function ruleMatchesRoom(rule, roomId) {
   if (!Array.isArray(rule.rooms) || rule.rooms.length === 0) return true;
-  if (rule.rooms.includes(roomId)) return true;
-  const name = translateRoom(roomId, roomsMap);
-  return name !== roomId && rule.rooms.includes(name);
+  return rule.rooms.includes(roomId);
 }
 
 // 觸發管線(注入 judgeFn / enqueueFn / logger 以利測試與替換)。
-// deps = { rules, judgeFn(rule, body)->{trigger,params}, enqueueFn(task)->filepath, logger, roomsMap? }
+// deps = { rules, judgeFn(rule, body)->{trigger,params}, enqueueFn(task)->filepath, logger }
 // 對一則正規化訊息 rec:關鍵字粗篩 → 房間範圍過濾 → 逐條決定直接觸發或經 LLM → 觸發則 enqueue。
 // 單條規則的任何錯誤只記 log,不中斷其他規則,也不向外丟出。
 async function runTriggerPipeline(rec, deps) {
-  const { rules, judgeFn, enqueueFn, logger, roomsMap } = deps;
+  const { rules, judgeFn, enqueueFn, logger } = deps;
   const body = rec && rec.content && rec.content.body;
   const roomId = rec && rec.room_id;
-  const matched = matchRules(body, rules).filter((rule) => ruleMatchesRoom(rule, roomId, roomsMap));
+  const matched = matchRules(body, rules).filter((rule) => ruleMatchesRoom(rule, roomId));
   for (const rule of matched) {
     try {
       let params = {};

@@ -101,13 +101,12 @@ function recIn(roomId, body) {
   {
     const enqueued = [];
     await runTriggerPipeline(recIn("!a:s", "幫我改顏色"), {
-      rules: roomScoped(["前端群"]),
-      roomsMap: { "!a:s": "前端群" },
+      rules: roomScoped(["前端群"]), // rooms 填顯示名而非 id
       judgeFn: async () => { throw new Error("不該被呼叫"); },
       enqueueFn: (t) => { enqueued.push(t); return "f"; },
       logger: silentLogger,
     });
-    ok("rooms 以顯示名(經 roomsMap)命中則觸發", enqueued.length === 1);
+    ok("rooms 只認 room_id,填顯示名不命中(避免撞名誤觸發)", enqueued.length === 0);
   }
 
   {

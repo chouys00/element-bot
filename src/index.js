@@ -82,7 +82,6 @@ async function main() {
           judgeFn,
           enqueueFn: (task) => enqueueTask(config.queueDir, task),
           logger: console,
-          roomsMap: readRoomsMap(STORAGE_DIR), // 供規則用「房間顯示名」限定範圍時翻譯比對
         });
       } catch (err) {
         console.error("[element-bot] 觸發管線錯誤(不影響擷取):", err.message);
