@@ -43,7 +43,8 @@
 <header>
   <span class="dot" id="botStatus">…</span>
   <span class="counts" id="counts"></span>
-  <a href="/rules.html" class="abtn" style="margin-left:auto;text-decoration:none">⚙ 規則設定</a>
+  <button id="notifyBtn" class="abtn" style="margin-left:auto">🔔 通知設定</button>
+  <a href="/rules.html" class="abtn" style="text-decoration:none">⚙ 規則設定</a>
 </header>
 <main>
   <div class="split">
@@ -65,6 +66,35 @@
     <table><tbody id="msgs"></tbody></table>
   </details>
 </main>
+
+<!-- 通知設定小面板(彈窗) -->
+<div id="notifyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10;align-items:center;justify-content:center">
+  <div style="background:#1c1f26;border:1px solid #2c2f38;border-radius:10px;padding:18px 20px;min-width:340px;max-width:90vw">
+    <div style="display:flex;align-items:center;margin-bottom:12px">
+      <b style="flex:1">🔔 任務通知設定</b>
+      <button id="notifyClose" class="abtn">✕</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;cursor:pointer">
+      <input type="checkbox" id="nf_enabled" /> 啟用任務通知
+    </label>
+    <div style="margin-bottom:12px">
+      <div class="k" style="min-width:0;margin-bottom:4px">通知房間</div>
+      <select id="nf_room" style="width:100%;background:#0f1115;color:#e6e6e6;border:1px solid #30363d;border-radius:6px;padding:6px"></select>
+      <div class="muted" style="font-size:12px;margin-top:4px">bot 登入帳號必須已加入此房間,否則發送失敗。</div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div class="k" style="min-width:0;margin-bottom:4px">通知時機</div>
+      <select id="nf_on" style="width:100%;background:#0f1115;color:#e6e6e6;border:1px solid #30363d;border-radius:6px;padding:6px">
+        <option value="all">全部（成功與失敗都通知）</option>
+        <option value="failed_only">只在失敗時通知</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+      <span id="nf_msg" class="muted" style="flex:1;font-size:12px"></span>
+      <button id="nf_save" class="abtn">儲存</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗" };
@@ -184,6 +214,43 @@ async function doAction(act, sum) {
   await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/${act}`, { method: "POST" }).catch(() => {});
   refresh();
 }
+
+// ── 通知設定彈窗 ──
+const nModal = document.getElementById("notifyModal");
+async function openNotify() {
+  const msg = document.getElementById("nf_msg");
+  msg.textContent = "";
+  try {
+    const { config, rooms } = await fetch("/api/notify-config").then((r) => r.json());
+    const sel = document.getElementById("nf_room");
+    const entries = Object.entries(rooms || {});
+    sel.innerHTML = `<option value="">（未選擇）</option>` +
+      entries.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}（${esc(id)}）</option>`).join("");
+    // 設定裡的房間若不在清單(例如未擷取過名稱)也要能選到
+    if (config.room_id && !entries.some(([id]) => id === config.room_id)) {
+      sel.innerHTML += `<option value="${esc(config.room_id)}">${esc(config.room_id)}</option>`;
+    }
+    sel.value = config.room_id || "";
+    document.getElementById("nf_enabled").checked = !!config.enabled;
+    document.getElementById("nf_on").value = config.notify_on || "all";
+    nModal.style.display = "flex";
+  } catch (_) { msg.textContent = "讀取設定失敗"; }
+}
+async function saveNotify() {
+  const msg = document.getElementById("nf_msg");
+  const body = {
+    enabled: document.getElementById("nf_enabled").checked,
+    room_id: document.getElementById("nf_room").value,
+    notify_on: document.getElementById("nf_on").value,
+  };
+  const r = await fetch("/api/notify-config", { method: "PUT", body: JSON.stringify(body) });
+  if (r.ok) { msg.textContent = "已儲存 ✓"; setTimeout(() => (nModal.style.display = "none"), 600); }
+  else { msg.textContent = "儲存失敗:" + (await r.text()); }
+}
+document.getElementById("notifyBtn").addEventListener("click", openNotify);
+document.getElementById("notifyClose").addEventListener("click", () => (nModal.style.display = "none"));
+document.getElementById("nf_save").addEventListener("click", saveNotify);
+nModal.addEventListener("click", (e) => { if (e.target === nModal) nModal.style.display = "none"; });
 
 refresh();
 setInterval(refresh, 1500);

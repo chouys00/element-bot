@@ -8,6 +8,7 @@ const { readHeartbeat, isFresh } = require("../heartbeat");
 const { PROJECT_ROOTS, taskNames } = require("../taskDefs");
 const { loadRules, saveRules } = require("../rules");
 const { dryRunRules } = require("../trigger");
+const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -107,6 +108,23 @@ function createServer(deps) {
           try { parsed = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
           try { saveRules(rulesPath, parsed); } catch (e) { res.writeHead(400); return res.end(String((e && e.message) || e)); }
           return sendJson(res, 200, { ok: true });
+        }
+        res.writeHead(405); return res.end("method not allowed");
+      }
+      // 任務通知設定:GET 讀回 { 設定, 房間 id→名(供下拉) };PUT 驗證後存回。
+      if (p === "/api/notify-config") {
+        if (req.method === "GET") {
+          return sendJson(res, 200, { config: readNotifyConfig(storageDir), rooms: readRoomsMap(storageDir) });
+        }
+        if (req.method === "PUT") {
+          let raw;
+          try { raw = await readBody(req); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+          let parsed;
+          try { parsed = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          try {
+            const saved = writeNotifyConfig(storageDir, parsed);
+            return sendJson(res, 200, { ok: true, config: saved });
+          } catch (e) { res.writeHead(400); return res.end(String((e && e.message) || e)); }
         }
         res.writeHead(405); return res.end("method not allowed");
       }

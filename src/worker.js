@@ -2,11 +2,14 @@
 const { loadConfig } = require("./config");
 const { pollOnce, recoverProcessing } = require("./workerCore");
 const { agentExecutor } = require("./executors/agentExecutor");
+const { writeNotifyFile } = require("./notify");
 
 async function main() {
   const config = loadConfig();
   const logger = console;
-  const deps = { queueDir: config.queueDir, executor: agentExecutor, logger };
+  // 任務結束寫通知檔到 queue/notify/,由 bot 監看發送(worker 沒有 Matrix client)。
+  const notify = (info) => writeNotifyFile(info);
+  const deps = { queueDir: config.queueDir, executor: agentExecutor, logger, notify };
 
   logger.log(`[worker] 啟動,監看 ${config.queueDir}/pending,每 ${config.pollIntervalMs}ms 掃描一次`);
   recoverProcessing(config.queueDir, logger, config.maxTaskAttempts);

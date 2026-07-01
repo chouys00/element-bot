@@ -126,6 +126,36 @@ function writePending(queueDir, name, obj) {
     fs.rmSync(q, { recursive: true, force: true });
   }
 
+  // processOne 成功/失敗都應呼叫 deps.notify,帶正確 status/id/task
+  {
+    const q = freshQueue();
+    const f = writePending(q, "n1.json", { rule: "r", task: "t", params: {} });
+    const notes = [];
+    await processOne(f, { queueDir: q, executor: async () => {}, logger: silentLogger, notify: async (info) => notes.push(info) });
+    ok("成功有通知", notes.length === 1 && notes[0].status === "done");
+    ok("通知帶 id", notes[0].id === "n1");
+    ok("通知帶 task 物件", notes[0].task && notes[0].task.task === "t");
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+  {
+    const q = freshQueue();
+    const f = writePending(q, "n2.json", { rule: "r", task: "t", params: {} });
+    const notes = [];
+    await processOne(f, { queueDir: q, executor: async () => { throw new Error("boom"); }, logger: silentLogger, notify: async (info) => notes.push(info) });
+    ok("失敗有通知", notes.length === 1 && notes[0].status === "failed");
+    ok("失敗通知帶 error", notes[0].error === "boom");
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+  // notify 丟錯不應影響任務結果(仍 done)
+  {
+    const q = freshQueue();
+    const f = writePending(q, "n3.json", { rule: "r", task: "t", params: {} });
+    const res = await processOne(f, { queueDir: q, executor: async () => {}, logger: silentLogger, notify: async () => { throw new Error("notify fail"); } });
+    ok("通知失敗不影響任務結果", res === "done");
+    ok("任務仍在 done/", fs.existsSync(path.join(q, "done", "n3.json")));
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
   // processOne 應把 id 與 queueDir 傳給 executor
   {
     const q = freshQueue();

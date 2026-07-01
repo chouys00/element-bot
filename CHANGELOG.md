@@ -5,10 +5,24 @@
 ## [未發布]
 
 規劃中(依施作順序):
-- 任務通知(成功/失敗、bot 掉線發訊息到指定房間)
 - 房間監聽管理 UI
 - 任務成本/耗時統計
 - 稽核日誌
+
+備註(留待日後):
+- 真正的 bot 掉線偵測(需獨立 watchdog 常駐,另開一組 Matrix 登入)。目前僅 bot 自身「上線/下線」盡力而為通知。
+- 通知第二行摘要開關(目前固定顯示;摘要為 summarize 步驟固定產出,不耗 token)。
+
+## [1.3.0] - 2026-07-01
+
+### 新增
+- 任務通知:worker 任務結束(成功/失敗)發一則訊息到指定房間,讓人知道「誰在哪觸發了什麼、結果如何」。
+  - 架構:worker 沒有 Matrix client,故任務結束寫 `queue/notify/<id>.json`,由 bot `fs.watch` 監看 → 套範本 → `sendTextMessage` → 刪檔;啟動時先清離線期間累積的通知。
+  - 訊息範本(範本 B + 免費短摘要,兩行):`✅「規則名」完成 · 〈房間名〉@發送者` + 第二行摘要(成功取自 summarize 步驟輸出,失敗取 error 首段並截斷 200 字,皆不耗 token)。
+  - 通知設定存於 `storage/notify-config.json`(`enabled` / `room_id` / `notify_on`);bot 發送前現讀,故改設定免重啟 bot。
+  - dashboard 新增「🔔 通知設定」彈窗:啟用開關、房間下拉(取自已知房間)、通知時機(全部 / 只失敗)。新增 `GET/PUT /api/notify-config`。
+  - bot 生命週期通知:啟動發「🟢 已上線」;收到中止訊號發「🔴 下線中」(盡力而為)。
+  - `notify_on: failed_only` 已實作可切換(降噪);真正的 crash 掉線偵測留待日後 watchdog。
 
 ## [1.2.0] - 2026-07-01
 

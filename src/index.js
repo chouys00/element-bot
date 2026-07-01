@@ -14,7 +14,11 @@ const { runTriggerPipeline } = require("./trigger");
 const { judge } = require("./judge");
 const { enqueueTask } = require("./enqueue");
 const path = require("path");
+const fs = require("fs");
 const { startHeartbeat } = require("./heartbeat");
+const { processNotifyFile, drainNotifyDir } = require("./notifySender");
+const { readNotifyConfig } = require("./notifyConfig");
+const { lifecycleMessage } = require("./notify");
 const {
   writeRoomsSidecar,
   buildRoomEntries,
@@ -143,6 +147,39 @@ async function main() {
   client.on(sdk.RoomEvent.Name, updateRooms);
   // 心跳:每 30s 寫一次存活時間戳,供儀表板判斷 bot 是否在線。
   startHeartbeat(STORAGE_DIR, 30000);
+
+  // ── 任務通知:worker 沒有 Matrix client,任務結束後寫 queue/notify/<id>.json,
+  //    由 bot 監看發送。通知房間/開關存於 storage/notify-config.json,發送前現讀故改設定免重啟。
+  const notifyDir = path.join(config.queueDir, "notify");
+  fs.mkdirSync(notifyDir, { recursive: true });
+  const sendFn = (roomId, text) => client.sendTextMessage(roomId, text);
+  const notifyDeps = { storageDir: STORAGE_DIR, sendFn, logger: console };
+  await drainNotifyDir(config.queueDir, notifyDeps); // 清掉 bot 離線期間累積的通知
+  try {
+    fs.watch(notifyDir, (evt, filename) => {
+      if (!filename || !filename.endsWith(".json")) return;
+      const fp = path.join(notifyDir, filename);
+      // 給原子寫入一點落地時間,並確認檔仍在(watch 可能對同一次寫入觸發多次)。
+      setTimeout(() => {
+        if (!fs.existsSync(fp)) return;
+        processNotifyFile(fp, notifyDeps).catch(() => {});
+      }, 50);
+    });
+    console.log(`[element-bot] 已監看任務通知佇列:${notifyDir}`);
+  } catch (e) {
+    console.warn("[element-bot] 無法監看通知佇列,任務通知停用:", e.message);
+  }
+
+  // bot 生命週期通知:啟動發「上線」;收到中止訊號發「下線」(盡力而為,可能因程序即刻結束而未送達)。
+  const sendLifecycle = async (kind) => {
+    const cfg = readNotifyConfig(STORAGE_DIR);
+    if (!cfg.enabled || !cfg.room_id) return;
+    try { await client.sendTextMessage(cfg.room_id, lifecycleMessage(kind)); } catch (_) {}
+  };
+  await sendLifecycle("online");
+  for (const sig of ["SIGINT", "SIGTERM"]) {
+    process.on(sig, () => { sendLifecycle("offline").finally(() => process.exit(0)); });
+  }
 
   console.log("[element-bot] 用 recovery key 建立裝置信任 + 還原 key backup...");
   await establishTrust(client, { userId: config.userId, password: config.password });

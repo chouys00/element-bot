@@ -125,6 +125,27 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const dryBad = await fetch(`${base}/api/rules/dry-run`, { method: "POST", body: "{not json" });
   ok("dry-run 壞 JSON 回 400", dryBad.status === 400);
 
+  // GET /api/notify-config → 預設(停用)+ 房間清單
+  const nc0 = await (await fetch(`${base}/api/notify-config`)).json();
+  ok("notify-config GET 預設停用", nc0.config.enabled === false);
+  ok("notify-config GET 附房間 id→名", nc0.rooms["!r:s"] === "產品群");
+
+  // PUT 合法 → 落地並可讀回
+  const ncPut = await fetch(`${base}/api/notify-config`, { method: "PUT", body: JSON.stringify({ enabled: true, room_id: "!r:s", notify_on: "all" }) });
+  ok("notify-config PUT 合法回 200", ncPut.status === 200);
+  const nc1 = await (await fetch(`${base}/api/notify-config`)).json();
+  ok("notify-config PUT 已落地", nc1.config.enabled === true && nc1.config.room_id === "!r:s");
+
+  // PUT 非法(啟用卻沒房間)→ 400,且不覆寫原檔
+  const ncBad = await fetch(`${base}/api/notify-config`, { method: "PUT", body: JSON.stringify({ enabled: true, room_id: "" }) });
+  ok("notify-config PUT 非法回 400", ncBad.status === 400);
+  const nc2 = await (await fetch(`${base}/api/notify-config`)).json();
+  ok("notify-config PUT 非法不覆寫", nc2.config.room_id === "!r:s");
+
+  // PUT 壞 JSON → 400
+  const ncJson = await fetch(`${base}/api/notify-config`, { method: "PUT", body: "{not json" });
+  ok("notify-config PUT 壞 JSON 回 400", ncJson.status === 400);
+
   server.close();
   fs.rmSync(root, { recursive: true, force: true });
   console.log(`dashboardServer.test.js: ${passed} 項通過 ✅`);

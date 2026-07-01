@@ -7,8 +7,18 @@ const { readState } = require("./executors/checkpoint");
 // state.attempt 由 agentExecutor 每次開跑時 +1,故硬崩潰(worker 程序死掉)也會被計入,避免無限重撿。
 const DEFAULT_MAX_ATTEMPTS = parseInt(process.env.MAX_TASK_ATTEMPTS || "3", 10);
 
+// 任務結束後發通知(可選)。deps.notify 不存在則略過;通知失敗不影響佇列。
+async function safeNotify(deps, info) {
+  if (!deps.notify) return;
+  try {
+    await deps.notify(info);
+  } catch (e) {
+    if (deps.logger) deps.logger.error("[worker] 寫任務通知失敗(不影響佇列):", e.message);
+  }
+}
+
 // 處理單一 pending 任務檔:讀取 → 移 processing/ → 執行 executor → 成功移 done/、失敗移 failed/。
-// deps = { queueDir, executor(task, { logger })->Promise, logger }
+// deps = { queueDir, executor(task, { logger })->Promise, logger, notify?(info)->Promise }
 // 回傳 "done" | "failed"。
 async function processOne(filePath, deps) {
   const { queueDir, executor, logger } = deps;
@@ -32,11 +42,13 @@ async function processOne(filePath, deps) {
   const processingPath = path.join(processingDir, base);
   fs.renameSync(filePath, processingPath);
 
+  const id = base.replace(/\.json$/, "");
   try {
-    await executor(task, { logger, queueDir, id: base.replace(/\.json$/, "") });
+    await executor(task, { logger, queueDir, id });
     fs.mkdirSync(doneDir, { recursive: true });
     fs.renameSync(processingPath, path.join(doneDir, base));
     logger.log(`[worker] ${base} 完成 → done/`);
+    await safeNotify(deps, { queueDir, id, status: "done", task });
     return "done";
   } catch (err) {
     fs.mkdirSync(failedDir, { recursive: true });
@@ -44,6 +56,7 @@ async function processOne(filePath, deps) {
     fs.renameSync(processingPath, dest);
     fs.writeFileSync(dest + ".error.txt", String((err && err.stack) || err), "utf8");
     logger.error(`[worker] ${base} 執行失敗 → failed/:`, err.message);
+    await safeNotify(deps, { queueDir, id, status: "failed", task, error: (err && err.message) || String(err) });
     return "failed";
   }
 }
