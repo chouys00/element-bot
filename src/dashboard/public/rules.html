@@ -35,6 +35,9 @@
   #msg { margin-left: auto; }
   .ok { color: #7ee787; } .err { color: #ff9d96; }
   .actions { display: flex; gap: 6px; }
+  tr.off td { opacity: .45; }
+  tr.off td.actions, tr.off td:nth-child(6) { opacity: 1; }
+  .sw { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -51,7 +54,7 @@
 
   <div class="panel">
     <table>
-      <thead><tr><th>名稱</th><th>關鍵字</th><th>任務</th><th>房間範圍</th><th>LLM</th><th>操作</th></tr></thead>
+      <thead><tr><th>名稱</th><th>關鍵字</th><th>任務</th><th>房間範圍</th><th>LLM</th><th>啟用</th><th>操作</th></tr></thead>
       <tbody id="list"></tbody>
     </table>
   </div>
@@ -60,6 +63,7 @@
     <div class="row"><label>名稱</label><input type="text" id="f_name" placeholder="例如:改顏色" /></div>
     <div class="row"><label>關鍵字</label><input type="text" id="f_keywords" placeholder="逗號分隔,例如:改顏色, 背景" /></div>
     <div class="row"><label>任務 (task)</label><select id="f_task"></select></div>
+    <div class="row"><label>啟用</label><div><input type="checkbox" id="f_enabled" checked /> <span class="hint">取消勾選 = 停用此規則(保留設定但不觸發)</span></div></div>
     <div class="row"><label>房間範圍</label><div><div id="f_rooms"></div><div class="hint">勾選的房間才會觸發此規則;<b>都不勾 = 套用全部監聽房間</b></div></div></div>
     <div class="row"><label>使用 LLM</label><div><input type="checkbox" id="f_use_llm" /> <span class="hint">勾選後此規則命中關鍵字還會經 LLM 二次判斷並抽參數</span></div></div>
     <div class="row llmonly"><label>觸發意圖 (intent)</label><input type="text" id="f_intent" placeholder="use_llm 開啟時必填:描述什麼情況該觸發" /></div>
@@ -81,6 +85,7 @@ let editIndex = -1;    // 正在編輯的規則索引;-1 = 新增
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function splitCsv(s) { return String(s || "").split(",").map((x) => x.trim()).filter(Boolean); }
 function roomLabel(id) { return rooms[id] && rooms[id] !== id ? `${rooms[id]}` : id; }
+function isEnabled(r) { return r.enabled !== false; } // 缺省/true=啟用;只有明確 false 才停用
 function setMsg(text, cls) { const m = document.getElementById("msg"); m.textContent = text; m.className = cls || "muted"; }
 
 async function load() {
@@ -93,18 +98,20 @@ async function load() {
 
 function renderList() {
   const tb = document.getElementById("list");
-  if (!rules.length) { tb.innerHTML = `<tr><td colspan="6" class="muted">（尚無規則,按「新增規則」開始）</td></tr>`; return; }
+  if (!rules.length) { tb.innerHTML = `<tr><td colspan="7" class="muted">（尚無規則,按「新增規則」開始）</td></tr>`; return; }
   tb.innerHTML = rules.map((r, i) => {
     const kw = (r.keywords || []).map((k) => `<span class="tag">${esc(k)}</span>`).join("");
     const rm = (Array.isArray(r.rooms) && r.rooms.length)
       ? r.rooms.map((id) => `<span class="tag" title="${esc(id)}">${esc(roomLabel(id))}</span>`).join("")
       : `<span class="muted">全部房間</span>`;
-    return `<tr>
+    const on = isEnabled(r);
+    return `<tr class="${on ? "" : "off"}">
       <td>${esc(r.name)}</td>
       <td>${kw}</td>
       <td>${esc(r.task)}</td>
       <td>${rm}</td>
       <td>${r.use_llm ? "✓" : "—"}</td>
+      <td><label class="sw" title="${on ? "已啟用,點擊停用" : "已停用,點擊啟用"}"><input type="checkbox" data-toggle="${i}" ${on ? "checked" : ""}/></label></td>
       <td class="actions">
         <button class="abtn" data-edit="${i}">編輯</button>
         <button class="abtn danger" data-del="${i}">刪除</button>
@@ -112,6 +119,7 @@ function renderList() {
   }).join("");
   tb.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => openEdit(+b.dataset.edit)));
   tb.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => delRule(+b.dataset.del)));
+  tb.querySelectorAll("[data-toggle]").forEach((c) => c.addEventListener("change", () => toggleEnabled(+c.dataset.toggle, c.checked)));
 }
 
 function fillSelects(rule) {
@@ -141,6 +149,7 @@ function openEdit(index) {
   const r = index >= 0 ? rules[index] : { name: "", keywords: [], task: tasks[0] || "", use_llm: false };
   document.getElementById("f_name").value = r.name || "";
   document.getElementById("f_keywords").value = (r.keywords || []).join(", ");
+  document.getElementById("f_enabled").checked = index < 0 ? true : isEnabled(r);
   document.getElementById("f_use_llm").checked = !!r.use_llm;
   document.getElementById("f_intent").value = r.intent || "";
   document.getElementById("f_extract").value = (r.extract || []).join(", ");
@@ -157,6 +166,7 @@ async function applyEdit() {
   const keywords = splitCsv(document.getElementById("f_keywords").value);
   const task = document.getElementById("f_task").value;
   const use_llm = document.getElementById("f_use_llm").checked;
+  const enabled = document.getElementById("f_enabled").checked;
   const roomsSel = [...document.querySelectorAll("#f_rooms input:checked")].map((c) => c.value);
   const intent = document.getElementById("f_intent").value.trim();
   const extract = splitCsv(document.getElementById("f_extract").value);
@@ -168,6 +178,7 @@ async function applyEdit() {
   if (use_llm && !intent) return err("使用 LLM 時,觸發意圖(intent)必填");
 
   const rule = { name, keywords, task, use_llm };
+  if (!enabled) rule.enabled = false;               // 啟用為預設,只在停用時寫欄位
   if (roomsSel.length) rule.rooms = roomsSel;       // 不選 = 全部房間(省略欄位)
   if (use_llm) { rule.intent = intent; if (extract.length) rule.extract = extract; }
   else if (extract.length) rule.extract = extract;
@@ -183,6 +194,17 @@ async function delRule(index) {
   const next = rules.filter((_, i) => i !== index);
   if (editIndex === index) closeEdit();
   await pushRules(next);
+}
+
+// 清單上的啟用/停用 toggle:即點即存。啟用時移除 enabled 欄位(回到預設),停用時寫 enabled:false。
+async function toggleEnabled(index, on) {
+  const next = rules.map((r, i) => {
+    if (i !== index) return r;
+    const c = { ...r };
+    if (on) delete c.enabled; else c.enabled = false;
+    return c;
+  });
+  if (!(await pushRules(next))) renderList(); // 存檔失敗:重繪把 checkbox 還原成實際狀態
 }
 
 // 立即把 next 這份完整規則陣列存到伺服器;成功才更新畫面上的 rules。回傳是否成功。
