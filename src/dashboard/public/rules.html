@@ -33,7 +33,7 @@
   .tag { display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 1px 8px; margin: 1px 2px; font-size: 12px; }
   .bar { display: flex; gap: 8px; align-items: center; }
   #msg { margin-left: auto; }
-  .ok { color: #7ee787; } .err { color: #ff9d96; }
+  .ok { color: #7ee787; } .err { color: #ff9d96; } .llm { color: #f0b429; }
   .actions { display: flex; gap: 6px; }
   tr.off td { opacity: .45; }
   tr.off td.actions, tr.off td:nth-child(6) { opacity: 1; }
@@ -51,6 +51,14 @@
     <button class="abtn primary" id="saveBtn">💾 儲存全部</button>
     <span id="msg" class="muted"></span>
   </div>
+
+  <details class="panel" id="dryPanel">
+    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽會命中哪些規則(不會真的觸發,也不跑 LLM)</summary>
+    <div class="row" style="margin-top:12px"><label>訊息文字</label><input type="text" id="dry_text" placeholder="例如:幫我把背景改成紅色" /></div>
+    <div class="row"><label>房間</label><select id="dry_room"></select></div>
+    <div class="bar"><button class="abtn primary" id="dryBtn">試跑</button><span class="hint">房間選「全部房間」時,有限定房間的規則會以「房間不符」呈現</span></div>
+    <div id="dryResult" style="margin-top:10px"></div>
+  </details>
 
   <div class="panel">
     <table>
@@ -93,7 +101,55 @@ async function load() {
   rules = Array.isArray(d.rules) ? d.rules : [];
   rooms = d.rooms || {};
   tasks = Array.isArray(d.tasks) ? d.tasks : [];
+  fillDryRoom();
   renderList();
+}
+
+// 試跑用房間下拉:第一項「全部房間」(不帶 room_id),其餘為已知房間。
+function fillDryRoom() {
+  const sel = document.getElementById("dry_room");
+  const opts = [`<option value="">全部房間(不指定)</option>`];
+  for (const id of Object.keys(rooms)) {
+    const label = rooms[id] && rooms[id] !== id ? `${rooms[id]}（${id}）` : id;
+    opts.push(`<option value="${esc(id)}">${esc(label)}</option>`);
+  }
+  sel.innerHTML = opts.join("");
+}
+
+// 試跑:把訊息文字(+可選房間)送後端,逐條規則顯示會不會命中/觸發。
+async function dryRun() {
+  const body = document.getElementById("dry_text").value;
+  const room_id = document.getElementById("dry_room").value;
+  const out = document.getElementById("dryResult");
+  if (!body.trim()) { out.innerHTML = `<span class="muted">請先輸入訊息文字。</span>`; return; }
+  out.innerHTML = `<span class="muted">試跑中…</span>`;
+  try {
+    const res = await fetch("/api/rules/dry-run", { method: "POST", body: JSON.stringify({ body, room_id: room_id || undefined }) });
+    if (!res.ok) { out.innerHTML = `<span class="err">試跑失敗:${esc(await res.text())}</span>`; return; }
+    const { results } = await res.json();
+    renderDryResult(results || []);
+  } catch (e) {
+    out.innerHTML = `<span class="err">試跑失敗:${esc(e.message)}</span>`;
+  }
+}
+
+function renderDryResult(results) {
+  const out = document.getElementById("dryResult");
+  if (!results.length) { out.innerHTML = `<span class="muted">（尚無規則)</span>`; return; }
+  const rows = results.map((r) => {
+    let verdict, cls;
+    if (r.triggers) { verdict = "✅ 會觸發"; cls = "ok"; }
+    else if (r.needs_llm) { verdict = "🤖 關鍵字命中 → 會送 LLM 二次判斷(此處不實跑)"; cls = "llm"; }
+    else {
+      const reasons = [];
+      if (!r.keyword_hit) reasons.push("關鍵字未命中");
+      if (!r.enabled) reasons.push("規則已停用");
+      if (!r.room_ok) reasons.push("房間不符");
+      verdict = `⬜ 不觸發（${reasons.join("、") || "—"}）`; cls = "muted";
+    }
+    return `<tr><td>${esc(r.name)}</td><td class="muted">${esc(r.task)}</td><td class="${cls}">${verdict}</td></tr>`;
+  }).join("");
+  out.innerHTML = `<table><thead><tr><th>規則</th><th>任務</th><th>試跑結果</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderList() {
@@ -229,6 +285,8 @@ document.getElementById("saveBtn").addEventListener("click", saveAll);
 document.getElementById("applyBtn").addEventListener("click", applyEdit);
 document.getElementById("cancelBtn").addEventListener("click", closeEdit);
 document.getElementById("f_use_llm").addEventListener("change", toggleLlm);
+document.getElementById("dryBtn").addEventListener("click", dryRun);
+document.getElementById("dry_text").addEventListener("keydown", (e) => { if (e.key === "Enter") dryRun(); });
 
 load().catch((e) => setMsg("載入失敗:" + e.message, "err"));
 </script>

@@ -55,4 +55,27 @@ async function runTriggerPipeline(rec, deps) {
   }
 }
 
-module.exports = { runTriggerPipeline, ruleMatchesRoom, ruleEnabled };
+// 試跑(dry-run):對一段訊息文字,逐條規則回報「若真的收到這則訊息會怎樣」,不實際觸發、不跑 LLM。
+// 用與觸發管線相同的判斷(matchRules / ruleEnabled / ruleMatchesRoom),確保預覽結果與 bot 實際行為一致。
+// use_llm 規則:關鍵字+啟用+房間都過才會「送 LLM 二次判斷」,最終是否觸發仍看 LLM(此處不實跑,標 needs_llm)。
+function dryRunRules(body, roomId, rules) {
+  const list = Array.isArray(rules) ? rules : [];
+  return list.map((rule) => {
+    const keyword_hit = matchRules(body, [rule]).length > 0;
+    const enabled = ruleEnabled(rule);
+    const room_ok = ruleMatchesRoom(rule, roomId);
+    const passesGate = keyword_hit && enabled && room_ok;
+    return {
+      name: rule.name,
+      task: rule.task,
+      use_llm: !!rule.use_llm,
+      keyword_hit,
+      enabled,
+      room_ok,
+      triggers: rule.use_llm ? false : passesGate, // 非 LLM:過閘即觸發
+      needs_llm: !!rule.use_llm && passesGate,      // LLM:過閘則會送 LLM 判斷
+    };
+  });
+}
+
+module.exports = { runTriggerPipeline, ruleMatchesRoom, ruleEnabled, dryRunRules };

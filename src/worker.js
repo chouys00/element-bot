@@ -9,7 +9,7 @@ async function main() {
   const deps = { queueDir: config.queueDir, executor: agentExecutor, logger };
 
   logger.log(`[worker] 啟動,監看 ${config.queueDir}/pending,每 ${config.pollIntervalMs}ms 掃描一次`);
-  recoverProcessing(config.queueDir, logger);
+  recoverProcessing(config.queueDir, logger, config.maxTaskAttempts);
 
   // 自排程 loop(非 setInterval):確保上一輪 pollOnce 完成後才排下一輪,
   // 避免未來換成較慢的真實 executor 時發生重入。
