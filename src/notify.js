@@ -40,6 +40,14 @@ function writeNotifyFile(info) {
   return payload;
 }
 
+// 把 Matrix 使用者 id 縮短成 localpart:@patrick.zyx:ims.opscloud.info → @patrick.zyx。
+// 非預期格式(無「:」)則原樣回傳。
+function shortSender(sender) {
+  const s = String(sender == null ? "" : sender);
+  const i = s.indexOf(":");
+  return i > 0 ? s.slice(0, i) : s;
+}
+
 // bot 端:把通知 payload 套成訊息文字(範本 B + 免費短摘要,兩行)。rooms = 房間 id→名 map。
 //   ✅「規則名」完成 · 〈房間名〉@發送者
 //      摘要
@@ -49,7 +57,7 @@ function formatNotify(payload, rooms = {}) {
   const label = payload.rule || payload.task || "任務";
   const src = payload.source || {};
   const roomName = (src.room_id && rooms[src.room_id]) || src.room_id || "未知房間";
-  const sender = src.sender ? ` ${src.sender}` : "";
+  const sender = src.sender ? ` ${shortSender(src.sender)}` : "";
   const line1 = `${icon}「${label}」${verb} · 〈${roomName}〉${sender}`.trimEnd();
   return payload.summary ? `${line1}\n${payload.summary}` : line1;
 }
@@ -59,4 +67,4 @@ function lifecycleMessage(kind) {
   return kind === "online" ? "🟢 element-bot 已上線" : "🔴 element-bot 下線中";
 }
 
-module.exports = { writeNotifyFile, formatNotify, lifecycleMessage, truncate, readSummaryFromLog };
+module.exports = { writeNotifyFile, formatNotify, lifecycleMessage, truncate, readSummaryFromLog, shortSender };

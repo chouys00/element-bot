@@ -78,9 +78,9 @@
       <input type="checkbox" id="nf_enabled" /> 啟用任務通知
     </label>
     <div style="margin-bottom:12px">
-      <div class="k" style="min-width:0;margin-bottom:4px">通知房間</div>
-      <select id="nf_room" style="width:100%;background:#0f1115;color:#e6e6e6;border:1px solid #30363d;border-radius:6px;padding:6px"></select>
-      <div class="muted" style="font-size:12px;margin-top:4px">bot 登入帳號必須已加入此房間,否則發送失敗。</div>
+      <div class="k" style="min-width:0;margin-bottom:4px">通知房間 room_id</div>
+      <input type="text" id="nf_room" placeholder="!xxxxxxxx:ims.opscloud.info" style="width:100%;box-sizing:border-box;background:#0f1115;color:#e6e6e6;border:1px solid #30363d;border-radius:6px;padding:6px;font-family:monospace" />
+      <div class="muted" style="font-size:12px;margin-top:4px">手動填入房間 room_id;bot 登入帳號必須已加入此房間,否則發送失敗。</div>
     </div>
     <div style="margin-bottom:14px">
       <div class="k" style="min-width:0;margin-bottom:4px">通知時機</div>
@@ -221,16 +221,8 @@ async function openNotify() {
   const msg = document.getElementById("nf_msg");
   msg.textContent = "";
   try {
-    const { config, rooms } = await fetch("/api/notify-config").then((r) => r.json());
-    const sel = document.getElementById("nf_room");
-    const entries = Object.entries(rooms || {});
-    sel.innerHTML = `<option value="">（未選擇）</option>` +
-      entries.map(([id, name]) => `<option value="${esc(id)}">${esc(name)}（${esc(id)}）</option>`).join("");
-    // 設定裡的房間若不在清單(例如未擷取過名稱)也要能選到
-    if (config.room_id && !entries.some(([id]) => id === config.room_id)) {
-      sel.innerHTML += `<option value="${esc(config.room_id)}">${esc(config.room_id)}</option>`;
-    }
-    sel.value = config.room_id || "";
+    const { config } = await fetch("/api/notify-config").then((r) => r.json());
+    document.getElementById("nf_room").value = config.room_id || "";
     document.getElementById("nf_enabled").checked = !!config.enabled;
     document.getElementById("nf_on").value = config.notify_on || "all";
     nModal.style.display = "flex";

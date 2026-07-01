@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { writeNotifyFile, formatNotify, lifecycleMessage, truncate } = require("../src/notify");
+const { writeNotifyFile, formatNotify, lifecycleMessage, truncate, shortSender } = require("../src/notify");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
@@ -56,7 +56,7 @@ function freshQueue() {
   ok("成功含 ✅", text.startsWith("✅"));
   ok("含規則名", text.includes("週報"));
   ok("房間名已翻譯", text.includes("產品群"));
-  ok("含發送者", text.includes("@alice:s"));
+  ok("發送者縮短為 localpart", text.includes("@alice") && !text.includes("@alice:s"));
   ok("摘要在第二行", text.split("\n")[1] === "已產出報表");
 }
 
@@ -73,6 +73,13 @@ function freshQueue() {
   const text = formatNotify({ status: "done", task: "some-skill", source: {}, summary: "" }, {});
   ok("無 rule 退回 task 名", text.includes("some-skill"));
   ok("缺房間顯示未知房間", text.includes("未知房間"));
+}
+
+// shortSender
+{
+  ok("縮短完整 Matrix id", shortSender("@patrick.zyx:ims.opscloud.info") === "@patrick.zyx");
+  ok("無冒號原樣回傳", shortSender("@bob") === "@bob");
+  ok("空值不丟錯", shortSender(undefined) === "");
 }
 
 // lifecycleMessage
