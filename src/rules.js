@@ -16,6 +16,12 @@ function validateRule(rule, index) {
       throw new Error(`${where}.extract 必須為非空字串陣列`);
     }
   }
+  // rooms:選填。限定此規則只在這些房間生效;元素為 room_id(全域唯一)。缺省/空陣列=全部房間。
+  if (rule.rooms !== undefined) {
+    if (!Array.isArray(rule.rooms) || !rule.rooms.every((r) => typeof r === "string" && r)) {
+      throw new Error(`${where}.rooms 必須為非空字串陣列(room_id)`);
+    }
+  }
   return true;
 }
 
@@ -28,4 +34,15 @@ function loadRules(rulesPath) {
   return parsed;
 }
 
-module.exports = { loadRules, validateRule };
+// 把整批規則寫回檔案。先全條驗證(任一條不合法即丟錯、完全不寫),
+// 再原子寫入(寫 .tmp 再 rename),避免 bot 的 fs.watch 讀到寫一半的檔。
+function saveRules(rulesPath, rules) {
+  if (!Array.isArray(rules)) throw new Error("規則必須是陣列");
+  rules.forEach((r, i) => validateRule(r, i));
+  const tmp = rulesPath + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(rules, null, 2), "utf8");
+  fs.renameSync(tmp, rulesPath);
+  return rules;
+}
+
+module.exports = { loadRules, validateRule, saveRules };

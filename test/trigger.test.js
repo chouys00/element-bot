@@ -13,6 +13,9 @@ const silentLogger = { log() {}, error() {} };
 function rec(body) {
   return { room_id: "!r:s", sender: "@a:s", event_id: "$e", content: { body } };
 }
+function recIn(roomId, body) {
+  return { room_id: roomId, sender: "@a:s", event_id: "$e", content: { body } };
+}
 
 (async () => {
   {
@@ -68,6 +71,53 @@ function rec(body) {
     } catch (_) { threwOut = true; }
     ok("judge 失敗不向外丟出", threwOut === false);
     ok("judge 失敗不入列", enqueued.length === 0);
+  }
+
+  // ── 房間範圍(rooms 欄位)──
+  const roomScoped = (rooms) => [{ name: "色", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms }];
+
+  {
+    const enqueued = [];
+    await runTriggerPipeline(recIn("!a:s", "幫我改顏色"), {
+      rules: roomScoped(["!a:s", "!b:s"]),
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("rooms 以 room_id 命中則觸發", enqueued.length === 1);
+  }
+
+  {
+    const enqueued = [];
+    await runTriggerPipeline(recIn("!z:s", "幫我改顏色"), {
+      rules: roomScoped(["!a:s", "!b:s"]),
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("room_id 不在 rooms 清單則不觸發", enqueued.length === 0);
+  }
+
+  {
+    const enqueued = [];
+    await runTriggerPipeline(recIn("!a:s", "幫我改顏色"), {
+      rules: roomScoped(["前端群"]), // rooms 填顯示名而非 id
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("rooms 只認 room_id,填顯示名不命中(避免撞名誤觸發)", enqueued.length === 0);
+  }
+
+  {
+    const enqueued = [];
+    await runTriggerPipeline(recIn("!whatever:s", "幫我改顏色"), {
+      rules: roomScoped([]), // 空 rooms = 不限定
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("rooms 為空陣列視為不限定,任何房間都觸發", enqueued.length === 1);
   }
 
   console.log(`trigger.test.js: ${passed} 項通過 ✅`);

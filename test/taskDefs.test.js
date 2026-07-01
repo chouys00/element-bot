@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("assert");
-const { getTaskDef } = require("../src/taskDefs");
+const { getTaskDef, taskNames } = require("../src/taskDefs");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
@@ -34,6 +34,13 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   let threw = false;
   try { def.sourceDir({ params: { 專案: "../evil" } }); } catch (_) { threw = true; }
   ok("專案逸出 DEMO_ROOT 丟錯", threw);
+}
+
+{
+  const names = taskNames();
+  ok("taskNames 回傳陣列", Array.isArray(names));
+  ok("taskNames 含 demo-skill", names.includes("demo-skill"));
+  ok("taskNames 含 i18n-skill", names.includes("i18n-skill"));
 }
 
 console.log(`taskDefs.test.js: ${passed} 項通過 ✅`);

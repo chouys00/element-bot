@@ -9,6 +9,7 @@ const { normalize } = require("./normalize");
 const { shouldCapture, toRecord } = require("./handler");
 const { writeEvent, OUTPUT_FILE } = require("./writer");
 const { loadRules } = require("./rules");
+const { watchRules, reloadRules } = require("./rulesWatcher");
 const { runTriggerPipeline } = require("./trigger");
 const { judge } = require("./judge");
 const { enqueueTask } = require("./enqueue");
@@ -47,12 +48,23 @@ async function main() {
     recoveryKey: config.recoveryKey,
   });
 
+  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
+
   let rules = [];
   try {
     rules = loadRules(config.rulesPath);
     console.log(`[element-bot] 載入 ${rules.length} 條觸發規則`);
   } catch (e) {
     console.warn("[element-bot] 規則載入失敗,觸發功能停用:", e.message);
+  }
+
+  // 熱載入:監看規則檔變動(dashboard 編輯存檔後),重讀換掉記憶體規則,免重啟 bot。
+  // rules 是 let 且被 processEvent 閉包捕捉,重新賦值即對後續觸發生效。
+  try {
+    watchRules(config.rulesPath, () => { rules = reloadRules(config.rulesPath, rules, console); });
+    console.log(`[element-bot] 已監看規則檔變動,將自動熱載入:${config.rulesPath}`);
+  } catch (e) {
+    console.warn("[element-bot] 無法監看規則檔,熱載入停用(仍可手動重啟套用):", e.message);
   }
 
   // 用 claude CLI(headless）做 LLM 判斷,吃目前登入帳號的 quota,不需 API key。
@@ -113,7 +125,6 @@ async function main() {
   await client.startClient({ initialSyncLimit: 1, filter: roomFilter });
   await waitForPrepared(client);
 
-  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
   // 房間名稱 sidecar:累積合併(不覆寫已知名稱),並替佇列中出現、
   // 但不在當前監聽清單的房間(含歷史任務)補查名稱,讓 dashboard 不顯示裸 room_id。
   const updateRooms = async () => {

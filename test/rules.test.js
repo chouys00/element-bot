@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { loadRules, validateRule } = require("../src/rules");
+const { loadRules, validateRule, saveRules } = require("../src/rules");
 
 let passed = 0;
 function ok(name, cond) {
@@ -28,6 +28,11 @@ throws("use_llm 非布林被拒", () => validateRule({ ...good, use_llm: "yes" }
 throws("use_llm:true 但缺 intent 被拒", () => validateRule({ ...good, use_llm: true }, 0));
 throws("extract 非字串陣列被拒", () => validateRule({ ...good, extract: [1, 2] }, 0));
 
+ok("rooms 字串陣列通過", validateRule({ ...good, rooms: ["!a:s", "!b:s"] }, 0) === true);
+ok("rooms 省略通過", validateRule(good, 0) === true);
+throws("rooms 非字串陣列被拒", () => validateRule({ ...good, rooms: [1] }, 0));
+throws("rooms 含空字串被拒", () => validateRule({ ...good, rooms: ["ok", ""] }, 0));
+
 const tmp = path.join(os.tmpdir(), `rules-test-${Date.now()}.json`);
 fs.writeFileSync(tmp, JSON.stringify([good]), "utf8");
 const loaded = loadRules(tmp);
@@ -39,5 +44,18 @@ const tmpBad = path.join(os.tmpdir(), `rules-bad-${Date.now()}.json`);
 fs.writeFileSync(tmpBad, JSON.stringify({ not: "array" }), "utf8");
 throws("loadRules 對非陣列丟錯", () => loadRules(tmpBad));
 fs.unlinkSync(tmpBad);
+
+// saveRules:全條合法才原子寫;有壞規則整批拒、檔案不動。
+const tmpSave = path.join(os.tmpdir(), `rules-save-${Date.now()}.json`);
+saveRules(tmpSave, [good, { ...good, name: "second" }]);
+ok("saveRules 寫入後可被 loadRules 讀回", loadRules(tmpSave).length === 2);
+ok("saveRules 內容正確(縮排 JSON)", loadRules(tmpSave)[1].name === "second");
+
+fs.writeFileSync(tmpSave, JSON.stringify([good]), "utf8"); // 先放一筆已知內容
+throws("saveRules 遇壞規則丟錯", () => saveRules(tmpSave, [good, { name: "" }]));
+ok("saveRules 失敗不改動原檔(整批拒)", loadRules(tmpSave).length === 1);
+ok("saveRules 失敗不留 .tmp 殘檔", !fs.existsSync(tmpSave + ".tmp"));
+throws("saveRules 對非陣列丟錯", () => saveRules(tmpSave, { not: "array" }));
+fs.unlinkSync(tmpSave);
 
 console.log(`rules.test.js: ${passed} 項通過 ✅`);

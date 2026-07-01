@@ -37,6 +37,7 @@ function loadDashboardConfig() {
     queueDir: path.resolve(__dirname, "..", process.env.QUEUE_DIR || "queue"),
     storageDir: path.resolve(__dirname, "..", "storage"),
     outputFile: path.resolve(__dirname, "..", "output", "messages.jsonl"),
+    rulesPath: path.resolve(__dirname, "..", process.env.RULES_PATH || "config/rules.json"),
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || "3000", 10),
   };
 }
