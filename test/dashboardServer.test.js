@@ -22,7 +22,10 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   fs.writeFileSync(path.join(queueDir, "done", "t1.json"), JSON.stringify({ rule: "會議", task: "cal", enqueued_at: "2026-06-26T01:00:00.000Z", source: { room_id: "!r:s", sender: "@a", body: "hi", event_id: "$1" } }), "utf8");
   fs.appendFileSync(outputFile, JSON.stringify({ room_id: "!r:s", sender: "@a", body: "hello" }) + "\n", "utf8");
 
-  const server = createServer({ queueDir, storageDir, outputFile });
+  const rulesPath = path.join(root, "rules.json");
+  fs.writeFileSync(rulesPath, JSON.stringify([{ name: "改顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]), "utf8");
+
+  const server = createServer({ queueDir, storageDir, outputFile, rulesPath });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
@@ -81,6 +84,32 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   // requeue 不存在的 failed 任務 → 404
   const noFail = await fetch(`${base}/api/tasks/nope/requeue`, { method: "POST" });
   ok("requeue 無此 failed → 404", noFail.status === 404);
+
+  // GET /api/rules → { rules, rooms, tasks }
+  const rd = await (await fetch(`${base}/api/rules`)).json();
+  ok("rules GET 回現有規則", Array.isArray(rd.rules) && rd.rules.length === 1 && rd.rules[0].name === "改顏色");
+  ok("rules GET 附房間 id→名", rd.rooms["!r:s"] === "產品群");
+  ok("rules GET 附 task 名單", Array.isArray(rd.tasks) && rd.tasks.includes("demo-skill"));
+
+  // PUT /api/rules 合法 → 寫入並可讀回
+  const put = await fetch(`${base}/api/rules`, {
+    method: "PUT",
+    body: JSON.stringify([{ name: "新規則", keywords: ["x"], task: "demo-skill", use_llm: false, rooms: ["!r:s"] }]),
+  });
+  ok("rules PUT 合法回 200", put.status === 200);
+  const after = await (await fetch(`${base}/api/rules`)).json();
+  ok("rules PUT 已落地", after.rules.length === 1 && after.rules[0].name === "新規則");
+  ok("rules PUT 保留 rooms", after.rules[0].rooms[0] === "!r:s");
+
+  // PUT 非法規則 → 400,且原檔不被覆寫
+  const badPut = await fetch(`${base}/api/rules`, { method: "PUT", body: JSON.stringify([{ name: "" }]) });
+  ok("rules PUT 非法回 400", badPut.status === 400);
+  const stillThere = await (await fetch(`${base}/api/rules`)).json();
+  ok("rules PUT 非法不覆寫原檔", stillThere.rules.length === 1 && stillThere.rules[0].name === "新規則");
+
+  // PUT 壞 JSON → 400
+  const badJson = await fetch(`${base}/api/rules`, { method: "PUT", body: "{not json" });
+  ok("rules PUT 壞 JSON 回 400", badJson.status === 400);
 
   server.close();
   fs.rmSync(root, { recursive: true, force: true });

@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { loadRules, validateRule } = require("../src/rules");
+const { loadRules, validateRule, saveRules } = require("../src/rules");
 
 let passed = 0;
 function ok(name, cond) {
@@ -44,5 +44,18 @@ const tmpBad = path.join(os.tmpdir(), `rules-bad-${Date.now()}.json`);
 fs.writeFileSync(tmpBad, JSON.stringify({ not: "array" }), "utf8");
 throws("loadRules 對非陣列丟錯", () => loadRules(tmpBad));
 fs.unlinkSync(tmpBad);
+
+// saveRules:全條合法才原子寫;有壞規則整批拒、檔案不動。
+const tmpSave = path.join(os.tmpdir(), `rules-save-${Date.now()}.json`);
+saveRules(tmpSave, [good, { ...good, name: "second" }]);
+ok("saveRules 寫入後可被 loadRules 讀回", loadRules(tmpSave).length === 2);
+ok("saveRules 內容正確(縮排 JSON)", loadRules(tmpSave)[1].name === "second");
+
+fs.writeFileSync(tmpSave, JSON.stringify([good]), "utf8"); // 先放一筆已知內容
+throws("saveRules 遇壞規則丟錯", () => saveRules(tmpSave, [good, { name: "" }]));
+ok("saveRules 失敗不改動原檔(整批拒)", loadRules(tmpSave).length === 1);
+ok("saveRules 失敗不留 .tmp 殘檔", !fs.existsSync(tmpSave + ".tmp"));
+throws("saveRules 對非陣列丟錯", () => saveRules(tmpSave, { not: "array" }));
+fs.unlinkSync(tmpSave);
 
 console.log(`rules.test.js: ${passed} 項通過 ✅`);

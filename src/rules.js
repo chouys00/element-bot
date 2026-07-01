@@ -34,4 +34,15 @@ function loadRules(rulesPath) {
   return parsed;
 }
 
-module.exports = { loadRules, validateRule };
+// 把整批規則寫回檔案。先全條驗證(任一條不合法即丟錯、完全不寫),
+// 再原子寫入(寫 .tmp 再 rename),避免 bot 的 fs.watch 讀到寫一半的檔。
+function saveRules(rulesPath, rules) {
+  if (!Array.isArray(rules)) throw new Error("規則必須是陣列");
+  rules.forEach((r, i) => validateRule(r, i));
+  const tmp = rulesPath + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(rules, null, 2), "utf8");
+  fs.renameSync(tmp, rulesPath);
+  return rules;
+}
+
+module.exports = { loadRules, validateRule, saveRules };
