@@ -104,6 +104,28 @@ function writePending(queueDir, name, obj) {
     fs.rmSync(q, { recursive: true, force: true });
   }
 
+  // recoverProcessing 崩潰重試保險:attempt 未達上限→回收;達上限→送 failed/ 不再重撿
+  {
+    const q = freshQueue();
+    fs.mkdirSync(path.join(q, "processing"), { recursive: true });
+    // 未達上限(attempt=2 < 3):應回收回 pending/
+    fs.writeFileSync(path.join(q, "processing", "young.json"), JSON.stringify({ rule: "r", task: "t" }), "utf8");
+    fs.mkdirSync(path.join(q, "work", "young"), { recursive: true });
+    fs.writeFileSync(path.join(q, "work", "young", "state.json"), JSON.stringify({ attempt: 2 }), "utf8");
+    // 已達上限(attempt=3 >= 3):應放棄 → failed/
+    fs.writeFileSync(path.join(q, "processing", "looper.json"), JSON.stringify({ rule: "r", task: "t" }), "utf8");
+    fs.mkdirSync(path.join(q, "work", "looper"), { recursive: true });
+    fs.writeFileSync(path.join(q, "work", "looper", "state.json"), JSON.stringify({ attempt: 3 }), "utf8");
+
+    const n = recoverProcessing(q, silentLogger, 3);
+    ok("只回收未達上限者(回傳 1)", n === 1);
+    ok("未達上限任務回 pending/", fs.existsSync(path.join(q, "pending", "young.json")));
+    ok("達上限任務移入 failed/", fs.existsSync(path.join(q, "failed", "looper.json")));
+    ok("達上限任務不回 pending/", !fs.existsSync(path.join(q, "pending", "looper.json")));
+    ok("達上限任務有寫 .error.txt", fs.existsSync(path.join(q, "failed", "looper.json.error.txt")));
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
   // processOne 應把 id 與 queueDir 傳給 executor
   {
     const q = freshQueue();

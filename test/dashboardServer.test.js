@@ -111,6 +111,20 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const badJson = await fetch(`${base}/api/rules`, { method: "PUT", body: "{not json" });
   ok("rules PUT 壞 JSON 回 400", badJson.status === 400);
 
+  // POST /api/rules/dry-run:回報每條規則是否命中(此時檔案內容為前面 PUT 的「新規則」keywords:["x"], rooms:["!r:s"])
+  const dry1 = await (await fetch(`${base}/api/rules/dry-run`, { method: "POST", body: JSON.stringify({ body: "含有 x 的訊息", room_id: "!r:s" }) })).json();
+  ok("dry-run 回 results 陣列", Array.isArray(dry1.results) && dry1.results.length === 1);
+  ok("dry-run 命中且房間相符 → triggers", dry1.results[0].keyword_hit === true && dry1.results[0].triggers === true);
+
+  const dry2 = await (await fetch(`${base}/api/rules/dry-run`, { method: "POST", body: JSON.stringify({ body: "含有 x 的訊息", room_id: "!other:s" }) })).json();
+  ok("dry-run 房間不符 → 不觸發", dry2.results[0].room_ok === false && dry2.results[0].triggers === false);
+
+  const dry3 = await (await fetch(`${base}/api/rules/dry-run`, { method: "POST", body: JSON.stringify({ body: "完全不相關" }) })).json();
+  ok("dry-run 關鍵字未命中 → 不觸發", dry3.results[0].keyword_hit === false && dry3.results[0].triggers === false);
+
+  const dryBad = await fetch(`${base}/api/rules/dry-run`, { method: "POST", body: "{not json" });
+  ok("dry-run 壞 JSON 回 400", dryBad.status === 400);
+
   server.close();
   fs.rmSync(root, { recursive: true, force: true });
   console.log(`dashboardServer.test.js: ${passed} 項通過 ✅`);

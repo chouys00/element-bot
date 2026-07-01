@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("assert");
-const { runTriggerPipeline } = require("../src/trigger");
+const { runTriggerPipeline, dryRunRules } = require("../src/trigger");
 
 let passed = 0;
 function ok(name, cond) {
@@ -152,6 +152,29 @@ function recIn(roomId, body) {
       logger: silentLogger,
     });
     ok("缺 enabled 欄位視為啟用(向後相容)", enqueued.length === 1);
+  }
+
+  // ── 試跑(dryRunRules)──
+  {
+    const rules = [
+      { name: "顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false },
+      { name: "部署", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x" },
+      { name: "停用的", keywords: ["改顏色"], task: "demo-skill", use_llm: false, enabled: false },
+      { name: "限房間", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!a:s"] },
+    ];
+    const res = dryRunRules("幫我改顏色", "!z:s", rules);
+    const by = (n) => res.find((r) => r.name === n);
+    ok("非 LLM 命中 → triggers", by("顏色").triggers === true);
+    ok("LLM 命中 → 不直接 triggers 但 needs_llm", by("部署").triggers === false && by("部署").needs_llm === false); // 關鍵字未命中(訊息無「部署」)
+    ok("停用規則 → 不觸發且 enabled=false", by("停用的").triggers === false && by("停用的").enabled === false);
+    ok("房間不符 → 不觸發且 room_ok=false", by("限房間").triggers === false && by("限房間").room_ok === false);
+
+    const res2 = dryRunRules("我要部署", "!a:s", rules);
+    const dep = res2.find((r) => r.name === "部署");
+    ok("LLM 規則關鍵字命中且過閘 → needs_llm=true、triggers=false", dep.needs_llm === true && dep.triggers === false);
+
+    const res3 = dryRunRules("幫我改顏色", "!a:s", rules);
+    ok("房間相符時限房間規則會觸發", res3.find((r) => r.name === "限房間").triggers === true);
   }
 
   console.log(`trigger.test.js: ${passed} 項通過 ✅`);

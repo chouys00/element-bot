@@ -18,6 +18,7 @@ function loadConfig() {
   const rulesPath = path.resolve(__dirname, "..", process.env.RULES_PATH || "config/rules.json");
   const queueDir = path.resolve(__dirname, "..", process.env.QUEUE_DIR || "queue");
   const pollIntervalMs = parseInt(process.env.POLL_INTERVAL_MS || "2000", 10);
+  const maxTaskAttempts = parseInt(process.env.MAX_TASK_ATTEMPTS || "3", 10);
 
   const missing = [];
   if (!homeserver) missing.push("MATRIX_HOMESERVER");
@@ -28,7 +29,7 @@ function loadConfig() {
   if (missing.length) {
     throw new Error(`缺少必要設定: ${missing.join(", ")}（請參考 .env.example）`);
   }
-  return { homeserver, userId, password, recoveryKey, deviceName, roomIds, rulesPath, queueDir, pollIntervalMs };
+  return { homeserver, userId, password, recoveryKey, deviceName, roomIds, rulesPath, queueDir, pollIntervalMs, maxTaskAttempts };
 }
 
 // 儀表板專用設定:只需路徑與埠,不要求 matrix 憑證,讓 dashboard 能獨立啟動。

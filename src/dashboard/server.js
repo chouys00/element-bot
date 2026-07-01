@@ -7,6 +7,7 @@ const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
 const { PROJECT_ROOTS, taskNames } = require("../taskDefs");
 const { loadRules, saveRules } = require("../rules");
+const { dryRunRules } = require("../trigger");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -44,6 +45,18 @@ function createServer(deps) {
     const p = new URL(req.url, "http://localhost").pathname;
     try {
       if (req.method === "POST") {
+        // 規則試跑:貼一段訊息文字(可選房間),回報每條規則會不會命中/觸發,不實際觸發、不跑 LLM。
+        if (p === "/api/rules/dry-run") {
+          let raw;
+          try { raw = await readBody(req); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+          let parsed;
+          try { parsed = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          const body = typeof parsed.body === "string" ? parsed.body : "";
+          const roomId = typeof parsed.room_id === "string" ? parsed.room_id : undefined;
+          let rules = [];
+          try { rules = loadRules(rulesPath); } catch (_) {}
+          return sendJson(res, 200, { results: dryRunRules(body, roomId, rules) });
+        }
         const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|verify|open)$/);
         if (m) {
           const id = decodeURIComponent(m[1]);
