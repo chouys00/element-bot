@@ -48,16 +48,20 @@ function shortSender(sender) {
   return i > 0 ? s.slice(0, i) : s;
 }
 
-// bot 端:把通知 payload 套成訊息文字(範本 B + 免費短摘要,兩行)。rooms = 房間 id→名 map。
-//   ✅「規則名」完成 · 〈房間名〉@發送者
+// bot 端:把通知 payload 套成訊息文字(範本 B + 免費短摘要,兩行)。
+// opts = { rooms: 房間 id→名 map, senderName: 已解析的發送者顯示名(優先於帳號 localpart) }
+//   ✅「規則名」完成 · 〈房間名〉發送者顯示名
 //      摘要
-function formatNotify(payload, rooms = {}) {
+function formatNotify(payload, opts = {}) {
+  const { rooms = {}, senderName } = opts;
   const icon = payload.status === "done" ? "✅" : "❌";
   const verb = payload.status === "done" ? "完成" : "失敗";
   const label = payload.rule || payload.task || "任務";
   const src = payload.source || {};
   const roomName = (src.room_id && rooms[src.room_id]) || src.room_id || "未知房間";
-  const sender = src.sender ? ` ${shortSender(src.sender)}` : "";
+  // 有顯示名用顯示名(如 Patrick.He.t),否則退回帳號 localpart(如 @patrick.zyx)。
+  const who = senderName || shortSender(src.sender);
+  const sender = src.sender ? ` ${who}` : "";
   const line1 = `${icon}「${label}」${verb} · 〈${roomName}〉${sender}`.trimEnd();
   return payload.summary ? `${line1}\n${payload.summary}` : line1;
 }

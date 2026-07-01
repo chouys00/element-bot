@@ -39,6 +39,41 @@ function writeNotify(queueDir, id, payload) {
     fs.rmSync(root, { recursive: true, force: true });
   }
 
+  // resolveSender 提供顯示名 → 訊息用顯示名而非帳號
+  {
+    const { root, queueDir, storageDir } = fresh();
+    writeNotifyConfig(storageDir, { enabled: true, room_id: "!notify:s" });
+    const f = writeNotify(queueDir, "disp", { status: "done", rule: "週報", source: { room_id: "!r:s", sender: "@patrick.zyx:ims" }, summary: "" });
+    const sent = [];
+    const r = await processNotifyFile(f, {
+      storageDir,
+      sendFn: async (room, text) => sent.push(text),
+      resolveSender: async (roomId, userId) => (roomId === "!r:s" && userId === "@patrick.zyx:ims" ? "Patrick.He.t" : null),
+      logger: silentLogger,
+    });
+    ok("resolveSender 命中回 sent", r === "sent");
+    ok("訊息用顯示名", sent[0].includes("Patrick.He.t"));
+    ok("訊息不出現帳號", !sent[0].includes("@patrick.zyx"));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+
+  // resolveSender 回 null(查不到)→ 退回帳號 localpart,且不因此丟錯
+  {
+    const { root, queueDir, storageDir } = fresh();
+    writeNotifyConfig(storageDir, { enabled: true, room_id: "!notify:s" });
+    const f = writeNotify(queueDir, "nodisp", { status: "done", rule: "週報", source: { room_id: "!r:s", sender: "@patrick.zyx:ims" }, summary: "" });
+    const sent = [];
+    const r = await processNotifyFile(f, {
+      storageDir,
+      sendFn: async (room, text) => sent.push(text),
+      resolveSender: async () => { throw new Error("member 未載入"); },
+      logger: silentLogger,
+    });
+    ok("resolveSender 丟錯不影響發送", r === "sent");
+    ok("退回帳號 localpart", sent[0].includes("@patrick.zyx"));
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+
   // 停用 → 不發送但仍刪檔(認領)
   {
     const { root, queueDir, storageDir } = fresh();

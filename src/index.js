@@ -153,7 +153,15 @@ async function main() {
   const notifyDir = path.join(config.queueDir, "notify");
   fs.mkdirSync(notifyDir, { recursive: true });
   const sendFn = (roomId, text) => client.sendTextMessage(roomId, text);
-  const notifyDeps = { storageDir: STORAGE_DIR, sendFn, logger: console };
+  // 查發送者在來源房間的顯示名(如 Patrick.He.t);查不到回 null,由 formatNotify 退回 @localpart。
+  const resolveSender = (roomId, userId) => {
+    try {
+      const room = client.getRoom(roomId);
+      const member = room && room.getMember(userId);
+      return (member && (member.rawDisplayName || member.name)) || null;
+    } catch (_) { return null; }
+  };
+  const notifyDeps = { storageDir: STORAGE_DIR, sendFn, resolveSender, logger: console };
   await drainNotifyDir(config.queueDir, notifyDeps); // 清掉 bot 離線期間累積的通知
   try {
     fs.watch(notifyDir, (evt, filename) => {

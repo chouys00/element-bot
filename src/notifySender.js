@@ -12,7 +12,7 @@ const { readRoomsMap } = require("./roomsSidecar");
 // 注意:先刪檔再發送(先「認領」),避免 fs.watch 可能的重複事件造成重複通知;
 //       代價是若發送失敗該筆通知會遺失,對通知這種非關鍵訊息可接受。
 async function processNotifyFile(filePath, deps) {
-  const { storageDir, sendFn, logger } = deps;
+  const { storageDir, sendFn, logger, resolveSender } = deps;
   let payload;
   try {
     payload = JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -26,7 +26,13 @@ async function processNotifyFile(filePath, deps) {
   if (!cfg.enabled || !cfg.room_id) return "skipped";
   if (cfg.notify_on === "failed_only" && payload.status !== "failed") return "skipped";
 
-  const text = formatNotify(payload, readRoomsMap(storageDir));
+  // 即時解析發送者在來源房間的顯示名(bot 在該房間才查得到);查不到則 formatNotify 退回 @localpart。
+  let senderName;
+  const src = payload.source || {};
+  if (resolveSender && src.sender) {
+    try { senderName = await resolveSender(src.room_id, src.sender); } catch (_) {}
+  }
+  const text = formatNotify(payload, { rooms: readRoomsMap(storageDir), senderName });
   try {
     await sendFn(cfg.room_id, text);
     return "sent";

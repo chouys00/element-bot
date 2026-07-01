@@ -51,26 +51,36 @@ function freshQueue() {
 {
   const text = formatNotify(
     { status: "done", rule: "週報", task: "report-skill", source: { room_id: "!r:s", sender: "@alice:s" }, summary: "已產出報表" },
-    { "!r:s": "產品群" }
+    { rooms: { "!r:s": "產品群" } }
   );
   ok("成功含 ✅", text.startsWith("✅"));
   ok("含規則名", text.includes("週報"));
   ok("房間名已翻譯", text.includes("產品群"));
-  ok("發送者縮短為 localpart", text.includes("@alice") && !text.includes("@alice:s"));
+  ok("無顯示名時發送者縮短為 localpart", text.includes("@alice") && !text.includes("@alice:s"));
   ok("摘要在第二行", text.split("\n")[1] === "已產出報表");
+}
+
+// formatNotify:提供 senderName → 用顯示名而非帳號
+{
+  const text = formatNotify(
+    { status: "done", rule: "週報", source: { room_id: "!r:s", sender: "@alice:s" }, summary: "" },
+    { rooms: {}, senderName: "Patrick.He.t" }
+  );
+  ok("有顯示名則用顯示名", text.includes("Patrick.He.t"));
+  ok("有顯示名則不出現帳號 localpart", !text.includes("@alice"));
 }
 
 // formatNotify:失敗 + 無摘要 → 單行
 {
-  const text = formatNotify({ status: "failed", rule: "部署", source: { room_id: "!r:s" }, summary: "" }, {});
+  const text = formatNotify({ status: "failed", rule: "部署", source: { room_id: "!r:s" }, summary: "" }, { rooms: {} });
   ok("失敗含 ❌", text.startsWith("❌"));
   ok("房間名 fallback 用 id", text.includes("!r:s"));
   ok("無摘要則單行", !text.includes("\n"));
 }
 
-// formatNotify:無 rule 用 task 名;source 缺房間 → 未知房間
+// formatNotify:無 rule 用 task 名;source 缺房間 → 未知房間;無參數也不丟錯
 {
-  const text = formatNotify({ status: "done", task: "some-skill", source: {}, summary: "" }, {});
+  const text = formatNotify({ status: "done", task: "some-skill", source: {}, summary: "" });
   ok("無 rule 退回 task 名", text.includes("some-skill"));
   ok("缺房間顯示未知房間", text.includes("未知房間"));
 }
