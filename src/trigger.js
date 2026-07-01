@@ -8,6 +8,11 @@ function ruleMatchesRoom(rule, roomId) {
   return rule.rooms.includes(roomId);
 }
 
+// 規則是否啟用:enabled === false 才視為停用;缺省/true 皆為啟用(向後相容)。
+function ruleEnabled(rule) {
+  return rule.enabled !== false;
+}
+
 // 觸發管線(注入 judgeFn / enqueueFn / logger 以利測試與替換)。
 // deps = { rules, judgeFn(rule, body)->{trigger,params}, enqueueFn(task)->filepath, logger }
 // 對一則正規化訊息 rec:關鍵字粗篩 → 房間範圍過濾 → 逐條決定直接觸發或經 LLM → 觸發則 enqueue。
@@ -16,7 +21,9 @@ async function runTriggerPipeline(rec, deps) {
   const { rules, judgeFn, enqueueFn, logger } = deps;
   const body = rec && rec.content && rec.content.body;
   const roomId = rec && rec.room_id;
-  const matched = matchRules(body, rules).filter((rule) => ruleMatchesRoom(rule, roomId));
+  const matched = matchRules(body, rules)
+    .filter(ruleEnabled)
+    .filter((rule) => ruleMatchesRoom(rule, roomId));
   for (const rule of matched) {
     try {
       let params = {};
@@ -48,4 +55,4 @@ async function runTriggerPipeline(rec, deps) {
   }
 }
 
-module.exports = { runTriggerPipeline, ruleMatchesRoom };
+module.exports = { runTriggerPipeline, ruleMatchesRoom, ruleEnabled };

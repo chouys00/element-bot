@@ -10,6 +10,8 @@ function validateRule(rule, index) {
   if (!rule.keywords.every((k) => typeof k === "string" && k)) throw new Error(`${where}.keywords 必須都是非空字串`);
   if (typeof rule.task !== "string" || !rule.task) throw new Error(`${where}.task 必須為非空字串`);
   if (typeof rule.use_llm !== "boolean") throw new Error(`${where}.use_llm 必須為布林`);
+  // enabled:選填。false=停用此規則(不觸發)。缺省=啟用(向後相容,舊規則無此欄位視為啟用)。
+  if (rule.enabled !== undefined && typeof rule.enabled !== "boolean") throw new Error(`${where}.enabled 必須為布林`);
   if (rule.use_llm && (typeof rule.intent !== "string" || !rule.intent)) throw new Error(`${where}.intent 在 use_llm 時必填`);
   if (rule.extract !== undefined) {
     if (!Array.isArray(rule.extract) || !rule.extract.every((e) => typeof e === "string" && e)) {

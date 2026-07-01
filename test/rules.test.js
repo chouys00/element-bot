@@ -28,6 +28,11 @@ throws("use_llm 非布林被拒", () => validateRule({ ...good, use_llm: "yes" }
 throws("use_llm:true 但缺 intent 被拒", () => validateRule({ ...good, use_llm: true }, 0));
 throws("extract 非字串陣列被拒", () => validateRule({ ...good, extract: [1, 2] }, 0));
 
+ok("enabled:false 通過驗證", validateRule({ ...good, enabled: false }, 0) === true);
+ok("enabled:true 通過驗證", validateRule({ ...good, enabled: true }, 0) === true);
+ok("enabled 省略通過", validateRule(good, 0) === true);
+throws("enabled 非布林被拒", () => validateRule({ ...good, enabled: "yes" }, 0));
+
 ok("rooms 字串陣列通過", validateRule({ ...good, rooms: ["!a:s", "!b:s"] }, 0) === true);
 ok("rooms 省略通過", validateRule(good, 0) === true);
 throws("rooms 非字串陣列被拒", () => validateRule({ ...good, rooms: [1] }, 0));

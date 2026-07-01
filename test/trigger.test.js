@@ -120,5 +120,39 @@ function recIn(roomId, body) {
     ok("rooms 為空陣列視為不限定,任何房間都觸發", enqueued.length === 1);
   }
 
+  // ── 啟用開關(enabled 欄位)──
+  {
+    const enqueued = [];
+    await runTriggerPipeline(rec("發週報"), {
+      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, enabled: false }],
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("enabled:false 的規則命中關鍵字也不觸發", enqueued.length === 0);
+  }
+
+  {
+    const enqueued = [];
+    await runTriggerPipeline(rec("發週報"), {
+      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, enabled: true }],
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("enabled:true 正常觸發", enqueued.length === 1);
+  }
+
+  {
+    const enqueued = [];
+    await runTriggerPipeline(rec("發週報"), {
+      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false }], // 無 enabled 欄位
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("缺 enabled 欄位視為啟用(向後相容)", enqueued.length === 1);
+  }
+
   console.log(`trigger.test.js: ${passed} 項通過 ✅`);
 })().catch((e) => { console.error(e); process.exit(1); });
