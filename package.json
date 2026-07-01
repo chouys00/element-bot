@@ -1,6 +1,6 @@
 {
   "name": "element-bot",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "即時監聽 Element/Matrix 加密房間的新訊息,解密後寫入 JSONL 供 AI agent 分析",
   "type": "commonjs",
