@@ -152,7 +152,7 @@ function openEdit(index) {
 
 function closeEdit() { document.getElementById("editPanel").style.display = "none"; editIndex = -1; }
 
-function applyEdit() {
+async function applyEdit() {
   const name = document.getElementById("f_name").value.trim();
   const keywords = splitCsv(document.getElementById("f_keywords").value);
   const task = document.getElementById("f_task").value;
@@ -172,28 +172,35 @@ function applyEdit() {
   if (use_llm) { rule.intent = intent; if (extract.length) rule.extract = extract; }
   else if (extract.length) rule.extract = extract;
 
-  if (editIndex >= 0) rules[editIndex] = rule; else rules.push(rule);
+  const next = [...rules];
+  if (editIndex >= 0) next[editIndex] = rule; else next.push(rule);
+  if (!(await pushRules(next))) return; // 存檔失敗:保留編輯面板,讓使用者修正後重試
   closeEdit();
-  renderList();
-  setMsg("已套用到暫存,記得按「儲存全部」寫入。", "muted");
 }
 
-function delRule(index) {
-  if (!confirm(`確定刪除規則「${rules[index] && rules[index].name}」?(按「儲存全部」後才真正寫入)`)) return;
-  rules.splice(index, 1);
+async function delRule(index) {
+  if (!confirm(`確定刪除規則「${rules[index] && rules[index].name}」?`)) return;
+  const next = rules.filter((_, i) => i !== index);
   if (editIndex === index) closeEdit();
-  renderList();
-  setMsg("已從暫存刪除,記得按「儲存全部」。", "muted");
+  await pushRules(next);
 }
 
-async function saveAll() {
+// 立即把 next 這份完整規則陣列存到伺服器;成功才更新畫面上的 rules。回傳是否成功。
+async function pushRules(next) {
   setMsg("儲存中…", "muted");
   try {
-    const res = await fetch("/api/rules", { method: "PUT", body: JSON.stringify(rules) });
-    if (res.ok) { setMsg("✅ 已儲存,bot 會自動熱載入新規則。", "ok"); await load(); }
-    else { const t = await res.text(); setMsg("❌ 儲存失敗:" + t, "err"); }
-  } catch (e) { setMsg("❌ 儲存失敗:" + e.message, "err"); }
+    const res = await fetch("/api/rules", { method: "PUT", body: JSON.stringify(next) });
+    if (res.ok) { rules = next; renderList(); setMsg("✅ 已儲存,bot 會自動熱載入新規則。", "ok"); return true; }
+    const t = await res.text();
+    setMsg("❌ 儲存失敗:" + t, "err");
+    return false;
+  } catch (e) {
+    setMsg("❌ 儲存失敗:" + e.message, "err");
+    return false;
+  }
 }
+
+async function saveAll() { await pushRules(rules); }
 
 document.getElementById("addBtn").addEventListener("click", () => openEdit(-1));
 document.getElementById("saveBtn").addEventListener("click", saveAll);
