@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("assert");
-const { runTriggerPipeline, dryRunRules } = require("../src/trigger");
+const { runTriggerPipeline, dryRunRules, fillTemplate } = require("../src/trigger");
 
 let passed = 0;
 function ok(name, cond) {
@@ -186,6 +186,41 @@ function recIn(roomId, body) {
 
     const res3 = dryRunRules("幫我改顏色", "!a:s", rules);
     ok("房間相符時限房間規則會觸發", res3.find((r) => r.name === "限房間").triggers === true);
+  }
+
+  // ── fillTemplate:把 {佔位} 用 params 填掉(支援中文 key)──
+  ok("fillTemplate 填入 params", fillTemplate("/i18n {路徑}", { 路徑: "a/b" }) === "/i18n a/b");
+  ok("fillTemplate 缺參數填空字串", fillTemplate("/i18n {路徑}", {}) === "/i18n ");
+  ok("fillTemplate 無佔位原樣回傳", fillTemplate("啟動", {}) === "啟動");
+  ok("fillTemplate 多佔位", fillTemplate("{a}-{b}", { a: "1", b: "2" }) === "1-2");
+
+  // ── 通用任務 skill-dispatch:帶 project_path,並用 params 填充 command ──
+  {
+    const enqueued = [];
+    const rules = [{ name: "H5多語系", keywords: ["多語系"], task: "skill-dispatch",
+      project_path: "D:\\GB\\GBH5", command: "/i18n {路徑}",
+      use_llm: true, intent: "x", extract: ["路徑"], rooms: ["!r:s"] }];
+    await runTriggerPipeline(rec("幫我把 activity 轉多語系"), {
+      rules,
+      judgeFn: async () => ({ trigger: true, params: { 路徑: "pages/activity" } }),
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("skill-dispatch 任務帶 project_path", enqueued[0].project_path === "D:\\GB\\GBH5");
+    ok("command 用 params 填充後入列", enqueued[0].command === "/i18n pages/activity");
+  }
+
+  {
+    const enqueued = [];
+    const rules = [{ name: "啟動H5", keywords: ["打開H5"], task: "skill-dispatch",
+      project_path: "D:\\GB\\GBH5", command: "啟動", use_llm: false, rooms: ["!r:s"] }];
+    await runTriggerPipeline(rec("幫我打開H5"), {
+      rules,
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("固定 command(無佔位)原樣帶入", enqueued[0].command === "啟動");
   }
 
   console.log(`trigger.test.js: ${passed} 項通過 ✅`);

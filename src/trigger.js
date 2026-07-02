@@ -14,6 +14,16 @@ function ruleEnabled(rule) {
   return rule.enabled !== false;
 }
 
+// 把指令模板裡的 {佔位} 用 params 填掉(支援中文 key,如 {路徑})。
+// 找不到對應 param 的佔位填空字串;無佔位則原樣回傳。供 skill-dispatch 通用任務把
+// LLM 擷取出的關鍵訊息組成專案 skill 認得的指令(如 "/i18n {路徑}" → "/i18n pages/activity")。
+function fillTemplate(template, params) {
+  return String(template).replace(/\{([^}]+)\}/g, (_, key) => {
+    const k = key.trim();
+    return params && params[k] != null ? String(params[k]) : "";
+  });
+}
+
 // 觸發管線(注入 judgeFn / enqueueFn / logger 以利測試與替換)。
 // deps = { rules, judgeFn(rule, body)->{trigger,params}, enqueueFn(task)->filepath, logger }
 // 對一則正規化訊息 rec:關鍵字粗篩 → 房間範圍過濾 → 逐條決定直接觸發或經 LLM → 觸發則 enqueue。
@@ -40,6 +50,10 @@ async function runTriggerPipeline(rec, deps) {
         rule: rule.name,
         task: rule.task,
         params,
+        // 通用任務 skill-dispatch 用:專案路徑原樣帶入;指令模板用 params 填好後帶入。
+        // 兩者為選填(內建任務不需要),故只在規則有設時才加進 task。
+        ...(rule.project_path ? { project_path: rule.project_path } : {}),
+        ...(rule.command ? { command: fillTemplate(rule.command, params) } : {}),
         source: {
           room_id: rec.room_id,
           sender: rec.sender,
@@ -79,4 +93,4 @@ function dryRunRules(body, roomId, rules) {
   });
 }
 
-module.exports = { runTriggerPipeline, ruleMatchesRoom, ruleEnabled, dryRunRules };
+module.exports = { runTriggerPipeline, ruleMatchesRoom, ruleEnabled, dryRunRules, fillTemplate };

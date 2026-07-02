@@ -26,6 +26,15 @@ function validateRule(rule, index) {
       throw new Error(`${where}.rooms 必須為非空字串陣列(room_id)`);
     }
   }
+  // project_path / command:通用任務 skill-dispatch 用(專案絕對路徑 + 餵給 skill 的指令模板)。
+  // 兩者選填(舊規則與內建任務不需要);提供時須為非空字串。是否必填交由執行期任務定義自行把關,
+  // 避免驗證層耦合特定 task 名稱。
+  if (rule.project_path !== undefined && (typeof rule.project_path !== "string" || !rule.project_path)) {
+    throw new Error(`${where}.project_path 必須為非空字串`);
+  }
+  if (rule.command !== undefined && (typeof rule.command !== "string" || !rule.command)) {
+    throw new Error(`${where}.command 必須為非空字串`);
+  }
   return true;
 }
 

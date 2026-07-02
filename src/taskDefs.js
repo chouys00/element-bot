@@ -65,6 +65,33 @@ const DEFS = {
     verifyArgs: null,
     needsReview: ["確認背景色是否如預期(開 index.html 檢視)", "正式套用前再次確認"],
   },
+
+  // 通用任務(「計程車」模型):路徑與指令都由規則帶進來(task.project_path / task.command),
+  // 任務定義本身固定,故新增專案/skill 只要加規則、不必改程式碼。
+  //   sourceDir - 直接用 task.project_path(任意絕對路徑,不做 root 逸出檢查;
+  //               存在性與 git 乾淨由 executor 的 prepare(gitClean)把關)
+  //   prompt    - 安全前言 + 把 command 當「使用者輸入」餵給 claude,讓它用專案 .claude/skills 識別執行
+  //   verifyArgs- null:成敗由 git 是否有改動判斷,驗證交由 skill 自理
+  "skill-dispatch": {
+    sourceDir: (task) => {
+      const p = String((task && task.project_path) || "");
+      if (!p) throw new Error("skill-dispatch 缺 project_path(規則須指定專案絕對路徑)");
+      return path.resolve(p);
+    },
+    prompt: (task) => {
+      const command = String((task && task.command) || "");
+      return [
+        "你是無人值守的自動執行者,必須全自動完成,禁止發問或停下來等待確認。",
+        "所有原需使用者確認/選擇/dry-run 的環節,一律自動採用預設或文件建議做法並續行。",
+        "你的當前工作目錄就是一個專案,所有讀寫只能發生在此目錄(及其子目錄)內。",
+        "請把下面這句話當成使用者在本專案中的輸入,用本專案的 skill(.claude/skills)識別並執行對應流程:",
+        "「" + command + "」",
+        "安全紅線:只准讀寫當前工作目錄(及其子目錄),不可碰此目錄以外任何檔案。是否 commit、commit message 以該 skill 的指示為準。",
+      ].join("");
+    },
+    verifyArgs: null,
+    needsReview: ["確認 skill 執行結果符合預期", "正式套用前再次確認"],
+  },
 };
 
 function getTaskDef(name) {
