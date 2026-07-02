@@ -18,6 +18,7 @@ const fs = require("fs");
 const { startHeartbeat } = require("./heartbeat");
 const { processNotifyFile, drainNotifyDir } = require("./notifySender");
 const { readNotifyConfig } = require("./notifyConfig");
+const { resolveRoomIds, reloadRoomIds } = require("./roomsConfig");
 const { lifecycleMessage } = require("./notify");
 const {
   writeRoomsSidecar,
@@ -54,6 +55,13 @@ async function main() {
 
   const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
 
+  // 監聽房間清單(可熱載入):優先讀 storage/rooms-config.json(dashboard 可編輯),
+  // 檔不存在時退回 .env 的 MATRIX_ROOM_IDS(config.roomIds)。以 let 讓 fs.watch 熱換。
+  let listenRoomIds = resolveRoomIds(STORAGE_DIR, config.roomIds);
+  if (listenRoomIds.length === 0) {
+    console.warn("[element-bot] ⚠️ 監聽清單為空(rooms-config.json 與 MATRIX_ROOM_IDS 皆無房間),目前不會擷取任何訊息;可到 dashboard「🏠 監聽房間」新增。");
+  }
+
   let rules = [];
   try {
     rules = loadRules(config.rulesPath);
@@ -85,7 +93,7 @@ async function main() {
         return;
       }
       const rec = normalize(event);
-      if (!shouldCapture(rec.room_id, rec, { roomIds: config.roomIds, startTs })) return;
+      if (!shouldCapture(rec.room_id, rec, { roomIds: listenRoomIds, startTs })) return;
       if (seen.has(rec.event_id)) return;
       seen.add(rec.event_id);
       writeEvent(toRecord(rec.room_id, rec));
@@ -119,21 +127,21 @@ async function main() {
     await processEvent(event);
   });
 
-  // 只向伺服器訂閱指定房間的 room 事件(節省傳輸)。
-  // to_device 是 sync 頂層欄位,不受 room filter 影響,E2EE 金鑰交換正常。
-  const roomFilter = new sdk.Filter(session.userId);
-  roomFilter.setDefinition({ room: { rooms: config.roomIds } });
+  // 不設 server-side room filter:改由 shouldCapture 以「可熱載入的監聽清單」在 client 端過濾。
+  // 這樣新增房間即時生效(已 join 的房間都在 sync 內,不需重設 filter/重跑 sync),移除亦即時。
+  // to_device(E2EE 金鑰交換)本就是 sync 頂層欄位,不受房間範圍影響,故拿掉 filter 不影響解密。
+  // 代價:sync 會涵蓋 bot 所有已加入房間,流量略增;對此規模的 bot 可接受。
 
   // 先啟動 sync 並等 PREPARED,讓 crypto 取得自身 identity,再建立信任。
   console.log("[element-bot] 啟動 sync...");
-  await client.startClient({ initialSyncLimit: 1, filter: roomFilter });
+  await client.startClient({ initialSyncLimit: 1 });
   await waitForPrepared(client);
 
   // 房間名稱 sidecar:累積合併(不覆寫已知名稱),並替佇列中出現、
   // 但不在當前監聽清單的房間(含歷史任務)補查名稱,讓 dashboard 不顯示裸 room_id。
   const updateRooms = async () => {
     try {
-      let merged = mergeRoomEntries(readRoomsMap(STORAGE_DIR), buildRoomEntries(client, config.roomIds));
+      let merged = mergeRoomEntries(readRoomsMap(STORAGE_DIR), buildRoomEntries(client, listenRoomIds));
       const missing = collectQueueRoomIds(config.queueDir).filter((id) => !merged[id] || merged[id] === id);
       if (missing.length) {
         merged = mergeRoomEntries(merged, await resolveRoomNames(client, missing));
@@ -145,6 +153,20 @@ async function main() {
   };
   updateRooms();
   client.on(sdk.RoomEvent.Name, updateRooms);
+
+  // 熱載入監聽清單:dashboard 存 storage/rooms-config.json → 重讀換掉記憶體清單,免重啟 bot。
+  // 沿用 rules 的熱載入模式(watchRules 為通用的「watch 目錄 + 檔名過濾」,原子寫友善,壞檔沿用前一版)。
+  // 換清單後補跑 updateRooms,讓新貼入的房間名稱寫進 rooms.json 供 dashboard 顯示。
+  const roomsConfigPath = path.join(STORAGE_DIR, "rooms-config.json");
+  try {
+    watchRules(roomsConfigPath, () => {
+      listenRoomIds = reloadRoomIds(STORAGE_DIR, listenRoomIds, console);
+      updateRooms();
+    });
+    console.log(`[element-bot] 已監看監聽清單變動,將自動熱載入:${roomsConfigPath}`);
+  } catch (e) {
+    console.warn("[element-bot] 無法監看監聽清單,熱載入停用(仍可手動重啟套用):", e.message);
+  }
   // 心跳:每 30s 寫一次存活時間戳,供儀表板判斷 bot 是否在線。
   startHeartbeat(STORAGE_DIR, 30000);
 
@@ -199,7 +221,7 @@ async function main() {
     password: config.password,
   });
 
-  console.log(`[element-bot] 已開始監聽 ${config.roomIds.length} 個房間。`);
+  console.log(`[element-bot] 已開始監聽 ${listenRoomIds.length} 個房間。`);
   console.log(`[element-bot] 輸出檔: ${OUTPUT_FILE}`);
   console.log("[element-bot] 到 Element 對目標房間發訊息來驗證。Ctrl+C 結束。");
 }

@@ -25,7 +25,8 @@ function loadConfig() {
   if (!userId) missing.push("MATRIX_USER_ID");
   if (!password) missing.push("MATRIX_PASSWORD");
   if (!recoveryKey) missing.push("MATRIX_RECOVERY_KEY");
-  if (roomIds.length === 0) missing.push("MATRIX_ROOM_IDS");
+  // 注意:MATRIX_ROOM_IDS 不再強制。監聽清單改由 storage/rooms-config.json 管理(dashboard 可編輯、
+  // 熱載入),env 僅在該檔不存在時作為初始值/後備(見 roomsConfig.resolveRoomIds)。
   if (missing.length) {
     throw new Error(`缺少必要設定: ${missing.join(", ")}（請參考 .env.example）`);
   }
@@ -40,6 +41,8 @@ function loadDashboardConfig() {
     outputFile: path.resolve(__dirname, "..", "output", "messages.jsonl"),
     rulesPath: path.resolve(__dirname, "..", process.env.RULES_PATH || "config/rules.json"),
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || "3000", 10),
+    // 監聽清單後備:rooms-config.json 不存在時,dashboard 顯示 .env 的初始監聽房間。
+    envRoomIds: parseRoomIds(process.env.MATRIX_ROOM_IDS),
   };
 }
 

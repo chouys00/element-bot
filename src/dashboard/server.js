@@ -9,6 +9,7 @@ const { PROJECT_ROOTS, taskNames } = require("../taskDefs");
 const { loadRules, saveRules } = require("../rules");
 const { dryRunRules } = require("../trigger");
 const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
+const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -39,9 +40,9 @@ function readBody(req, limit = 1024 * 1024) {
 
 const CONTENT_TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
 
-// deps = { queueDir, storageDir, outputFile }
+// deps = { queueDir, storageDir, outputFile, rulesPath, envRoomIds }
 function createServer(deps) {
-  const { queueDir, storageDir, outputFile, rulesPath } = deps;
+  const { queueDir, storageDir, outputFile, rulesPath, envRoomIds = [] } = deps;
   return http.createServer(async (req, res) => {
     const p = new URL(req.url, "http://localhost").pathname;
     try {
@@ -99,7 +100,13 @@ function createServer(deps) {
         if (req.method === "GET") {
           let rules = [];
           try { rules = loadRules(rulesPath); } catch (_) {} // 檔不存在/壞掉 → 給空陣列,讓 UI 從零開始
-          return sendJson(res, 200, { rules, rooms: readRoomsMap(storageDir), tasks: taskNames() });
+          // monitor_rooms:規則房間 checkbox 的來源(權威監聽清單)。rooms 仍供 id→名 標籤。
+          return sendJson(res, 200, {
+            rules,
+            rooms: readRoomsMap(storageDir),
+            tasks: taskNames(),
+            monitor_rooms: resolveRoomIds(storageDir, envRoomIds),
+          });
         }
         if (req.method === "PUT") {
           let raw;
@@ -124,6 +131,24 @@ function createServer(deps) {
           try {
             const saved = writeNotifyConfig(storageDir, parsed);
             return sendJson(res, 200, { ok: true, config: saved });
+          } catch (e) { res.writeHead(400); return res.end(String((e && e.message) || e)); }
+        }
+        res.writeHead(405); return res.end("method not allowed");
+      }
+      // 監聽房間清單:GET 讀回 { room_ids(檔缺回 env 後備), rooms(id→名 供即時解析) };PUT 驗證後原子存回。
+      // 存回後 bot 靠 fs.watch 熱載入(見 index.js),免重啟。
+      if (p === "/api/rooms-config") {
+        if (req.method === "GET") {
+          return sendJson(res, 200, { room_ids: resolveRoomIds(storageDir, envRoomIds), rooms: readRoomsMap(storageDir) });
+        }
+        if (req.method === "PUT") {
+          let raw;
+          try { raw = await readBody(req); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+          let parsed;
+          try { parsed = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          try {
+            const saved = writeRoomsConfig(storageDir, parsed);
+            return sendJson(res, 200, { ok: true, room_ids: saved.room_ids });
           } catch (e) { res.writeHead(400); return res.end(String((e && e.message) || e)); }
         }
         res.writeHead(405); return res.end("method not allowed");

@@ -25,7 +25,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const rulesPath = path.join(root, "rules.json");
   fs.writeFileSync(rulesPath, JSON.stringify([{ name: "改顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]), "utf8");
 
-  const server = createServer({ queueDir, storageDir, outputFile, rulesPath });
+  const server = createServer({ queueDir, storageDir, outputFile, rulesPath, envRoomIds: ["!env:s"] });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
@@ -90,6 +90,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("rules GET 回現有規則", Array.isArray(rd.rules) && rd.rules.length === 1 && rd.rules[0].name === "改顏色");
   ok("rules GET 附房間 id→名", rd.rooms["!r:s"] === "產品群");
   ok("rules GET 附 task 名單", Array.isArray(rd.tasks) && rd.tasks.includes("demo-skill"));
+  ok("rules GET 附監聽清單(檔缺 → env 後備)", Array.isArray(rd.monitor_rooms) && rd.monitor_rooms[0] === "!env:s");
 
   // PUT /api/rules 合法 → 寫入並可讀回
   const put = await fetch(`${base}/api/rules`, {
@@ -145,6 +146,29 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   // PUT 壞 JSON → 400
   const ncJson = await fetch(`${base}/api/notify-config`, { method: "PUT", body: "{not json" });
   ok("notify-config PUT 壞 JSON 回 400", ncJson.status === 400);
+
+  // GET /api/rooms-config → 檔缺回 env 後備 + 房間名映射
+  const rc0 = await (await fetch(`${base}/api/rooms-config`)).json();
+  ok("rooms-config GET 檔缺回 env 後備", Array.isArray(rc0.room_ids) && rc0.room_ids[0] === "!env:s");
+  ok("rooms-config GET 附房間 id→名", rc0.rooms["!r:s"] === "產品群");
+
+  // PUT 合法 → 落地(正規化去重),之後 GET 用檔而非 env,且 /api/rules monitor_rooms 同步
+  const rcPut = await fetch(`${base}/api/rooms-config`, { method: "PUT", body: JSON.stringify({ room_ids: [" !r:s ", "!x:s", "!r:s"] }) });
+  ok("rooms-config PUT 合法回 200", rcPut.status === 200);
+  const rc1 = await (await fetch(`${base}/api/rooms-config`)).json();
+  ok("rooms-config PUT 已落地並去重/trim", rc1.room_ids.length === 2 && rc1.room_ids[0] === "!r:s" && rc1.room_ids[1] === "!x:s");
+  const rulesAfterRc = await (await fetch(`${base}/api/rules`)).json();
+  ok("rules monitor_rooms 反映存檔後清單", rulesAfterRc.monitor_rooms.length === 2 && rulesAfterRc.monitor_rooms[1] === "!x:s");
+
+  // PUT 非法(room_ids 非陣列)→ 400,且不覆寫原檔
+  const rcBad = await fetch(`${base}/api/rooms-config`, { method: "PUT", body: JSON.stringify({ room_ids: "nope" }) });
+  ok("rooms-config PUT 非法回 400", rcBad.status === 400);
+  const rc2 = await (await fetch(`${base}/api/rooms-config`)).json();
+  ok("rooms-config PUT 非法不覆寫", rc2.room_ids.length === 2 && rc2.room_ids[0] === "!r:s");
+
+  // PUT 壞 JSON → 400
+  const rcJson = await fetch(`${base}/api/rooms-config`, { method: "PUT", body: "{not json" });
+  ok("rooms-config PUT 壞 JSON 回 400", rcJson.status === 400);
 
   server.close();
   fs.rmSync(root, { recursive: true, force: true });

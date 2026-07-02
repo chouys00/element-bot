@@ -5,13 +5,26 @@
 ## [未發布]
 
 規劃中(依施作順序):
-- 房間監聽管理 UI
 - 任務成本/耗時統計
 - 稽核日誌
 
 備註(留待日後):
 - 真正的 bot 掉線偵測(需獨立 watchdog 常駐,另開一組 Matrix 登入)。目前僅 bot 自身「上線/下線」盡力而為通知。
 - 通知第二行摘要開關(目前固定顯示;摘要為 summarize 步驟固定產出,不耗 token)。
+
+## [1.5.0] - 2026-07-02
+
+### 新增
+- **監聽房間管理 UI(#7)**:把「bot 監聽哪些房間」從 `.env` 搬到 dashboard,可編輯 + 熱載入。
+  - 新增設定檔 `storage/rooms-config.json`(`{ room_ids: [...] }`)與讀寫模組 `roomsConfig.js`(驗證 + 原子寫 + 熱載入沿用前一版壞檔不崩)。
+  - 主控台新增「🏠 監聽房間」彈窗:textarea 一行一個 room_id(可貼入 bot 尚未看過的新房間),即時解析房名回饋(已知 ✅ 房名、未知 ⚠️ 以 ID 生效)。
+  - 後端 `GET/PUT /api/rooms-config`;`GET /api/rules` 一併回傳 `monitor_rooms` 監聽清單。
+  - 規則編輯器房間 checkbox 來源從 `rooms.json`(bot 看過的房間)改為「監聽清單」,UI 層強制規則房間為監聽清單的子集;規則若含已移出監聽的房間,仍列出並標 ⚠️「已不在監聽清單」不靜默丟掉。
+
+### 變更(行為調整)
+- bot 監聽清單改由 `rooms-config.json` 決定並經 `fs.watch` 熱載入(新增/移除房間免重啟);`.env` 的 `MATRIX_ROOM_IDS` 僅在該檔不存在時作為初始值/後備,不硬移除以免炸現有部署。
+- `MATRIX_ROOM_IDS` 由必填改為非必填(監聽清單可純由 dashboard 管理);清單為空時 bot 啟動會警告但不崩潰。
+- 移除 Matrix sync 的 server-side room filter,改由 `shouldCapture` 在 client 端以熱載入清單過濾。換取乾淨的即時熱載入;`to_device`(E2EE 金鑰交換)為 sync 頂層欄位不受影響,解密照常。
 
 ## [1.4.0] - 2026-07-02
 

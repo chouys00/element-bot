@@ -43,7 +43,8 @@
 <header>
   <span class="dot" id="botStatus">…</span>
   <span class="counts" id="counts"></span>
-  <button id="notifyBtn" class="abtn" style="margin-left:auto">🔔 通知設定</button>
+  <button id="roomsBtn" class="abtn" style="margin-left:auto">🏠 監聽房間</button>
+  <button id="notifyBtn" class="abtn">🔔 通知設定</button>
   <a href="/rules.html" class="abtn" style="text-decoration:none">⚙ 規則設定</a>
 </header>
 <main>
@@ -92,6 +93,23 @@
     <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
       <span id="nf_msg" class="muted" style="flex:1;font-size:12px"></span>
       <button id="nf_save" class="abtn">儲存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 監聽房間設定小面板(彈窗) -->
+<div id="roomsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10;align-items:center;justify-content:center">
+  <div style="background:#1c1f26;border:1px solid #2c2f38;border-radius:10px;padding:18px 20px;min-width:420px;max-width:90vw">
+    <div style="display:flex;align-items:center;margin-bottom:12px">
+      <b style="flex:1">🏠 監聽房間</b>
+      <button id="roomsClose" class="abtn">✕</button>
+    </div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">一行一個 room_id。這是 bot 監聽的權威清單,規則只能從中挑房間。存檔後 bot 自動熱載入,免重啟。</div>
+    <textarea id="rc_text" spellcheck="false" style="width:100%;box-sizing:border-box;height:140px;background:#0f1115;color:#e6e6e6;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:monospace;font-size:13px;resize:vertical"></textarea>
+    <div id="rc_preview" style="margin-top:8px;font-size:12px;max-height:140px;overflow:auto"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:12px">
+      <span id="rc_msg" class="muted" style="flex:1;font-size:12px"></span>
+      <button id="rc_save" class="abtn">儲存</button>
     </div>
   </div>
 </div>
@@ -243,6 +261,53 @@ document.getElementById("notifyBtn").addEventListener("click", openNotify);
 document.getElementById("notifyClose").addEventListener("click", () => (nModal.style.display = "none"));
 document.getElementById("nf_save").addEventListener("click", saveNotify);
 nModal.addEventListener("click", (e) => { if (e.target === nModal) nModal.style.display = "none"; });
+
+// ── 監聽房間彈窗 ──
+const rModal = document.getElementById("roomsModal");
+let rcRooms = {}; // room_id -> 房名(供即時解析)
+// 縮短房名:把名稱裡的 Matrix user id(@localpart:server)砍掉 :server 段。
+function shortRoomName(name) { return String(name == null ? "" : name).replace(/(@[^\s:]+):[^\s)]+/g, "$1"); }
+function parseRoomLines(text) {
+  return String(text || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+// 即時把 textarea 內容解析為預覽:已知房間顯示 ✅ 房名、未知顯示 ⚠️ 以 ID 生效。
+function renderRoomsPreview() {
+  const ids = parseRoomLines(document.getElementById("rc_text").value);
+  const box = document.getElementById("rc_preview");
+  if (!ids.length) { box.innerHTML = `<span class="muted">（尚未輸入任何 room_id)</span>`; return; }
+  const seen = new Set();
+  box.innerHTML = ids.map((id) => {
+    if (seen.has(id)) return `<div class="muted">↩︎ ${esc(id)}（重複,存檔時自動去除)</div>`;
+    seen.add(id);
+    const name = rcRooms[id];
+    return (name && name !== id)
+      ? `<div style="color:#7ee787">✅ ${esc(shortRoomName(name))} <span class="muted">${esc(id)}</span></div>`
+      : `<div style="color:#f0b429">⚠️ ${esc(id)} <span class="muted">bot 尚未看過,將以 ID 生效</span></div>`;
+  }).join("");
+}
+async function openRooms() {
+  const msg = document.getElementById("rc_msg");
+  msg.textContent = "";
+  try {
+    const d = await fetch("/api/rooms-config").then((r) => r.json());
+    rcRooms = d.rooms || {};
+    document.getElementById("rc_text").value = (d.room_ids || []).join("\n");
+    renderRoomsPreview();
+    rModal.style.display = "flex";
+  } catch (_) { msg.textContent = "讀取設定失敗"; }
+}
+async function saveRooms() {
+  const msg = document.getElementById("rc_msg");
+  const room_ids = parseRoomLines(document.getElementById("rc_text").value);
+  const r = await fetch("/api/rooms-config", { method: "PUT", body: JSON.stringify({ room_ids }) });
+  if (r.ok) { msg.textContent = "已儲存 ✓ bot 將自動熱載入"; setTimeout(() => (rModal.style.display = "none"), 800); }
+  else { msg.textContent = "儲存失敗:" + (await r.text()); }
+}
+document.getElementById("roomsBtn").addEventListener("click", openRooms);
+document.getElementById("roomsClose").addEventListener("click", () => (rModal.style.display = "none"));
+document.getElementById("rc_save").addEventListener("click", saveRooms);
+document.getElementById("rc_text").addEventListener("input", renderRoomsPreview);
+rModal.addEventListener("click", (e) => { if (e.target === rModal) rModal.style.display = "none"; });
 
 refresh();
 setInterval(refresh, 1500);

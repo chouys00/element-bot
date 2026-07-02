@@ -91,7 +91,8 @@
 
 <script>
 let rules = [];        // 記憶體中的規則陣列(編輯都先改這裡,按「儲存全部」才 PUT)
-let rooms = {};        // room_id -> 房名
+let rooms = {};        // room_id -> 房名(供標籤顯示)
+let monitorRooms = []; // 監聽清單(規則房間 checkbox 的來源)
 let tasks = [];        // 可用 task 名稱
 let editIndex = -1;    // 正在編輯的規則索引;-1 = 新增
 
@@ -108,6 +109,7 @@ async function load() {
   const d = await fetch("/api/rules").then((r) => r.json());
   rules = Array.isArray(d.rules) ? d.rules : [];
   rooms = d.rooms || {};
+  monitorRooms = Array.isArray(d.monitor_rooms) ? d.monitor_rooms : [];
   tasks = Array.isArray(d.tasks) ? d.tasks : [];
   fillDryRoom();
   renderList();
@@ -191,21 +193,24 @@ function fillSelects(rule) {
   ts.innerHTML = tasks.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
   if (rule && rule.task) ts.value = rule.task;
 
-  // 房間(checkbox):來源為 bot 已知房間(rooms.json)。規則裡若有清單外的 id(bot 尚未看過,
-  // 或日後被移出監聽),仍列出並標 ⚠️,不靜默丟掉,以免使用者不知道規則哪裡壞。
-  // 勾選 = 納入此規則;都不勾 = 不觸發任何房間(啟用規則存檔時會被擋)。
-  const known = new Set(Object.keys(rooms));
+  // 房間(checkbox):來源為「監聽清單」(monitor_rooms,即 rooms-config.json)。
+  // 規則只能從監聽清單挑子集。若規則裡有清單外的 id(日後被移出監聽),仍列出並標
+  // ⚠️「已不在監聽清單」(不靜默丟掉,以免使用者不知道規則哪裡壞);勾選 = 納入此規則。
+  const known = new Set(monitorRooms);
   const ruleRooms = rule && Array.isArray(rule.rooms) ? rule.rooms : [];
-  const ids = [...known, ...ruleRooms.filter((id) => !known.has(id))];
+  const ids = [...monitorRooms, ...ruleRooms.filter((id) => !known.has(id))];
   const sel = new Set(ruleRooms);
   const rs = document.getElementById("f_rooms");
   rs.innerHTML = ids.map((id) => {
     const name = rooms[id];
-    const label = (name && name !== id)
+    const nameLabel = (name && name !== id)
       ? `${esc(shortRoomName(name))} <span class="rid">${esc(id)}</span>`
-      : `${esc(id)} <span class="warn">⚠️ bot 尚未看過</span>`;
+      : `${esc(id)}`;
+    const label = known.has(id)
+      ? nameLabel
+      : `${nameLabel} <span class="warn">⚠️ 已不在監聽清單</span>`;
     return `<label class="chk"><input type="checkbox" value="${esc(id)}" ${sel.has(id) ? "checked" : ""}/> ${label}</label>`;
-  }).join("") || `<span class="muted">（尚無已知房間;bot 在房間收過訊息後才會出現,屆時再回來勾選)</span>`;
+  }).join("") || `<span class="muted">（監聽清單為空;請先到主控台「🏠 監聽房間」新增房間)</span>`;
 }
 
 function toggleLlm() {
