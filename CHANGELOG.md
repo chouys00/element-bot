@@ -18,8 +18,9 @@
 ### 新增
 - 規則編輯 UI(`rules.html`):在 dashboard 直接新增/編輯/刪除/啟用停用規則,免手改 `config/rules.json`。
   - 後端 `GET/PUT /api/rules`(整批驗證後原子寫入),搭配 bot `fs.watch` 熱載入,存檔即生效免重啟。
-  - 房間範圍改用 textarea 手動輸入(一行一個 `room_id`),並即時解析成房名回饋:已知房間顯示 ✅ 房名、bot 尚未看過的顯示 ⚠️ 但仍可存(以 ID 生效)。
+  - 房間範圍用 checkbox 從已知房間清單勾選;規則裡若有清單外的 room_id(bot 尚未看過/已移出監聽),仍列出並標 ⚠️ 不靜默丟掉。
   - 房名縮短顯示:`Empty room (was @kevin.hce:ims.opscloud.info)` → `Empty room (was @kevin.hce)`。
+  - (註:房間欄位曾短暫改為 textarea,後依「MATRIX_ROOM_IDS 才是權威清單、rule.rooms 是子集」的定案改回 checkbox;待 #7 完成後 checkbox 來源將從 rooms.json 換為監聽清單。)
 
 ### 變更(行為調整)
 - **規則房間範圍語意反轉**:`rules[].rooms` 留空/缺省由「套用全部房間」改為「不觸發任何房間」。規則須明確指定房間才生效,避免忘填房間的規則在所有房間亂觸發。
