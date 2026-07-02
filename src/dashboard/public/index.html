@@ -260,7 +260,6 @@ async function saveNotify() {
 document.getElementById("notifyBtn").addEventListener("click", openNotify);
 document.getElementById("notifyClose").addEventListener("click", () => (nModal.style.display = "none"));
 document.getElementById("nf_save").addEventListener("click", saveNotify);
-nModal.addEventListener("click", (e) => { if (e.target === nModal) nModal.style.display = "none"; });
 
 // ── 監聽房間彈窗 ──
 const rModal = document.getElementById("roomsModal");
@@ -307,8 +306,19 @@ document.getElementById("roomsBtn").addEventListener("click", openRooms);
 document.getElementById("roomsClose").addEventListener("click", () => (rModal.style.display = "none"));
 document.getElementById("rc_save").addEventListener("click", saveRooms);
 document.getElementById("rc_text").addEventListener("input", renderRoomsPreview);
-// 只用叉按鈕與 Esc 關閉,不靠點外區域(容易誤觸)
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && rModal.style.display === "flex") rModal.style.display = "none"; });
+// 點外部區域關閉:先前直接用 click + e.target===rModal 判斷會誤觸——
+// 在 textarea 內拖曳選字、放開滑鼠時若滑出到背景,也會被算成「點了背景」而誤關。
+// 修法:mousedown 與 click(放開時)都要落在背景本身,才視為真的點外部,拖曳選字不會誤觸。
+let rModalMouseDownOnBackdrop = false;
+rModal.addEventListener("mousedown", (e) => { rModalMouseDownOnBackdrop = e.target === rModal; });
+rModal.addEventListener("click", (e) => {
+  if (e.target === rModal && rModalMouseDownOnBackdrop) rModal.style.display = "none";
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (rModal.style.display === "flex") rModal.style.display = "none";
+  if (nModal.style.display === "flex") nModal.style.display = "none";
+});
 
 refresh();
 setInterval(refresh, 1500);

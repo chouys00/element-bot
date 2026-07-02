@@ -9,7 +9,6 @@ const path = require("path");
 //   verifyArgs(src) -> ["py","-3",script,src,locale] 之類;null=不 verify(交由專案自理)
 //   needsReview     -> 完成後要人補/核對的提示
 // 成敗一律由 git 是否有改動判斷,不再宣告預期產物。
-// const FTL_ROOT = process.env.NSL_FTL_ROOT || "D:/ftl/ftl/ftl";
 const FTL_ROOT = process.env.NSL_FTL_ROOT || "D:/GB/PC/ftl/ftl";
 const I18N_SKILL_DIR = process.env.NSL_SKILL_DIR || path.join(FTL_ROOT, ".cursor/skills/template-i18n-inject");
 
