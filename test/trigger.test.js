@@ -20,7 +20,7 @@ function recIn(roomId, body) {
 (async () => {
   {
     const enqueued = [];
-    const rules = [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false }];
+    const rules = [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, rooms: ["!r:s"] }];
     await runTriggerPipeline(rec("發週報"), {
       rules,
       judgeFn: async () => { throw new Error("不該被呼叫"); },
@@ -33,7 +33,7 @@ function recIn(roomId, body) {
 
   {
     const enqueued = [];
-    const rules = [{ name: "deploy", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x", extract: ["環境"] }];
+    const rules = [{ name: "deploy", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x", extract: ["環境"], rooms: ["!r:s"] }];
     await runTriggerPipeline(rec("我要部署"), {
       rules,
       judgeFn: async () => ({ trigger: true, params: { 環境: "prod" } }),
@@ -47,7 +47,7 @@ function recIn(roomId, body) {
 
   {
     const enqueued = [];
-    const rules = [{ name: "deploy", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x" }];
+    const rules = [{ name: "deploy", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x", rooms: ["!r:s"] }];
     await runTriggerPipeline(rec("昨天那個部署掛了"), {
       rules,
       judgeFn: async () => ({ trigger: false, params: {} }),
@@ -59,7 +59,7 @@ function recIn(roomId, body) {
 
   {
     const enqueued = [];
-    const rules = [{ name: "deploy", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x" }];
+    const rules = [{ name: "deploy", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x", rooms: ["!r:s"] }];
     let threwOut = false;
     try {
       await runTriggerPipeline(rec("我要部署"), {
@@ -112,19 +112,30 @@ function recIn(roomId, body) {
   {
     const enqueued = [];
     await runTriggerPipeline(recIn("!whatever:s", "幫我改顏色"), {
-      rules: roomScoped([]), // 空 rooms = 不限定
+      rules: roomScoped([]), // 空 rooms = 不觸發任何房間(規則須明確指定房間)
       judgeFn: async () => { throw new Error("不該被呼叫"); },
       enqueueFn: (t) => { enqueued.push(t); return "f"; },
       logger: silentLogger,
     });
-    ok("rooms 為空陣列視為不限定,任何房間都觸發", enqueued.length === 1);
+    ok("rooms 為空陣列 = 不觸發任何房間", enqueued.length === 0);
+  }
+
+  {
+    const enqueued = [];
+    await runTriggerPipeline(recIn("!whatever:s", "幫我改顏色"), {
+      rules: [{ name: "色", keywords: ["改顏色"], task: "demo-skill", use_llm: false }], // 無 rooms 欄位
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("缺 rooms 欄位 = 不觸發任何房間", enqueued.length === 0);
   }
 
   // ── 啟用開關(enabled 欄位)──
   {
     const enqueued = [];
     await runTriggerPipeline(rec("發週報"), {
-      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, enabled: false }],
+      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, enabled: false, rooms: ["!r:s"] }],
       judgeFn: async () => { throw new Error("不該被呼叫"); },
       enqueueFn: (t) => { enqueued.push(t); return "f"; },
       logger: silentLogger,
@@ -135,7 +146,7 @@ function recIn(roomId, body) {
   {
     const enqueued = [];
     await runTriggerPipeline(rec("發週報"), {
-      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, enabled: true }],
+      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, enabled: true, rooms: ["!r:s"] }],
       judgeFn: async () => { throw new Error("不該被呼叫"); },
       enqueueFn: (t) => { enqueued.push(t); return "f"; },
       logger: silentLogger,
@@ -146,7 +157,7 @@ function recIn(roomId, body) {
   {
     const enqueued = [];
     await runTriggerPipeline(rec("發週報"), {
-      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false }], // 無 enabled 欄位
+      rules: [{ name: "report", keywords: ["週報"], task: "report-skill", use_llm: false, rooms: ["!r:s"] }], // 無 enabled 欄位
       judgeFn: async () => { throw new Error("不該被呼叫"); },
       enqueueFn: (t) => { enqueued.push(t); return "f"; },
       logger: silentLogger,
@@ -157,9 +168,9 @@ function recIn(roomId, body) {
   // ── 試跑(dryRunRules)──
   {
     const rules = [
-      { name: "顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false },
-      { name: "部署", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x" },
-      { name: "停用的", keywords: ["改顏色"], task: "demo-skill", use_llm: false, enabled: false },
+      { name: "顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!z:s"] },
+      { name: "部署", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x", rooms: ["!a:s"] },
+      { name: "停用的", keywords: ["改顏色"], task: "demo-skill", use_llm: false, enabled: false, rooms: ["!z:s"] },
       { name: "限房間", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!a:s"] },
     ];
     const res = dryRunRules("幫我改顏色", "!z:s", rules);

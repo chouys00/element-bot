@@ -18,7 +18,9 @@ function validateRule(rule, index) {
       throw new Error(`${where}.extract 必須為非空字串陣列`);
     }
   }
-  // rooms:選填。限定此規則只在這些房間生效;元素為 room_id(全域唯一)。缺省/空陣列=全部房間。
+  // rooms:選填。限定此規則只在這些房間生效;元素為 room_id(全域唯一)。缺省/空陣列=不觸發任何房間。
+  // 注意:「啟用中的規則必須至少有一個房間」只在 saveRules 存檔時強制(見下),
+  // validateRule/loadRules 不強制,避免舊檔或手改檔案讓整批規則無法載入。
   if (rule.rooms !== undefined) {
     if (!Array.isArray(rule.rooms) || !rule.rooms.every((r) => typeof r === "string" && r)) {
       throw new Error(`${where}.rooms 必須為非空字串陣列(room_id)`);
@@ -40,7 +42,14 @@ function loadRules(rulesPath) {
 // 再原子寫入(寫 .tmp 再 rename),避免 bot 的 fs.watch 讀到寫一半的檔。
 function saveRules(rulesPath, rules) {
   if (!Array.isArray(rules)) throw new Error("規則必須是陣列");
-  rules.forEach((r, i) => validateRule(r, i));
+  rules.forEach((r, i) => {
+    validateRule(r, i);
+    // 啟用中的規則必須至少指定一個房間:留空 = 不觸發任何房間(見 trigger.ruleMatchesRoom),
+    // 幾乎必為誤設,故存檔時擋下。停用中的規則(enabled:false)可留空,反正本就不觸發。
+    if (r.enabled !== false && (!Array.isArray(r.rooms) || r.rooms.length === 0)) {
+      throw new Error(`rules[${i}] 啟用中的規則必須至少指定一個房間(rooms 不可為空)`);
+    }
+  });
   const tmp = rulesPath + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(rules, null, 2), "utf8");
   fs.renameSync(tmp, rulesPath);

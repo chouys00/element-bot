@@ -51,16 +51,28 @@ throws("loadRules 對非陣列丟錯", () => loadRules(tmpBad));
 fs.unlinkSync(tmpBad);
 
 // saveRules:全條合法才原子寫;有壞規則整批拒、檔案不動。
+// 註:啟用中規則存檔時強制要有房間,故 saveRules 測試一律帶 rooms。
+const goodR = { ...good, rooms: ["!a:s"] };
 const tmpSave = path.join(os.tmpdir(), `rules-save-${Date.now()}.json`);
-saveRules(tmpSave, [good, { ...good, name: "second" }]);
+saveRules(tmpSave, [goodR, { ...goodR, name: "second" }]);
 ok("saveRules 寫入後可被 loadRules 讀回", loadRules(tmpSave).length === 2);
 ok("saveRules 內容正確(縮排 JSON)", loadRules(tmpSave)[1].name === "second");
 
-fs.writeFileSync(tmpSave, JSON.stringify([good]), "utf8"); // 先放一筆已知內容
-throws("saveRules 遇壞規則丟錯", () => saveRules(tmpSave, [good, { name: "" }]));
+fs.writeFileSync(tmpSave, JSON.stringify([goodR]), "utf8"); // 先放一筆已知內容
+throws("saveRules 遇壞規則丟錯", () => saveRules(tmpSave, [goodR, { name: "" }]));
 ok("saveRules 失敗不改動原檔(整批拒)", loadRules(tmpSave).length === 1);
 ok("saveRules 失敗不留 .tmp 殘檔", !fs.existsSync(tmpSave + ".tmp"));
 throws("saveRules 對非陣列丟錯", () => saveRules(tmpSave, { not: "array" }));
+
+// saveRules:啟用中的規則必須至少指定一個房間(留空=不觸發,幾乎必為誤設);停用規則可留空。
+fs.writeFileSync(tmpSave, JSON.stringify([{ ...good, rooms: ["!a:s"] }]), "utf8");
+throws("saveRules 擋『啟用中卻無 rooms』", () => saveRules(tmpSave, [good])); // good 無 rooms 且預設啟用
+throws("saveRules 擋『啟用中 rooms 為空陣列』", () => saveRules(tmpSave, [{ ...good, rooms: [] }]));
+ok("saveRules 失敗(缺房間)不改動原檔", loadRules(tmpSave)[0].rooms[0] === "!a:s");
+saveRules(tmpSave, [{ ...good, rooms: ["!a:s"] }]);
+ok("saveRules 啟用中且有房間 → 成功", loadRules(tmpSave).length === 1);
+saveRules(tmpSave, [{ ...good, enabled: false }]);
+ok("saveRules 停用規則可無房間", loadRules(tmpSave)[0].enabled === false);
 fs.unlinkSync(tmpSave);
 
 console.log(`rules.test.js: ${passed} 項通過 ✅`);

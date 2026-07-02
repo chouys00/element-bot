@@ -25,10 +25,10 @@
   .row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
   .row > label { color: #9aa; }
   input[type=text], select { width: 100%; box-sizing: border-box; background: #0f1115; color: #e6e6e6; border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
-  #f_rooms { display: flex; flex-direction: column; gap: 5px; max-height: 150px; overflow: auto; background: #0f1115; border: 1px solid #30363d; border-radius: 6px; padding: 8px; }
-  #f_rooms .chk { display: flex; align-items: center; gap: 7px; cursor: pointer; }
-  #f_rooms .chk:hover { color: #79b8ff; }
-  #f_rooms input[type=checkbox] { width: auto; margin: 0; }
+  textarea#f_rooms { width: 100%; box-sizing: border-box; background: #0f1115; color: #e6e6e6; border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; font-size: 13px; font-family: ui-monospace, Consolas, "Courier New", monospace; resize: vertical; min-height: 62px; }
+  #f_rooms_resolved { margin: 6px 0; display: flex; flex-direction: column; gap: 3px; }
+  #f_rooms_resolved > div { font-size: 12px; }
+  #f_rooms_resolved .rid { color: #667; font-size: 11px; }
   .hint { color: #667; font-size: 12px; }
   .tag { display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 1px 8px; margin: 1px 2px; font-size: 12px; }
   .bar { display: flex; gap: 8px; align-items: center; }
@@ -72,7 +72,11 @@
     <div class="row"><label>關鍵字</label><input type="text" id="f_keywords" placeholder="逗號分隔,例如:改顏色, 背景" /></div>
     <div class="row"><label>任務 (task)</label><select id="f_task"></select></div>
     <div class="row"><label>啟用</label><div><input type="checkbox" id="f_enabled" checked /> <span class="hint">取消勾選 = 停用此規則(保留設定但不觸發)</span></div></div>
-    <div class="row"><label>房間範圍</label><div><div id="f_rooms"></div><div class="hint">勾選的房間才會觸發此規則;<b>都不勾 = 套用全部監聽房間</b></div></div></div>
+    <div class="row"><label>房間範圍</label><div>
+      <textarea id="f_rooms" placeholder="一行一個 room_id,例如:&#10;!UyYnRuPElTnXuPNXSC:ims.opscloud.info"></textarea>
+      <div id="f_rooms_resolved"></div>
+      <div class="hint">一行一個 <b>room_id</b>;<b>啟用中的規則必須至少指定一個房間</b>(留空 = 不觸發任何房間)。房名僅 bot 已看過的房間才顯示得出。</div>
+    </div></div>
     <div class="row"><label>使用 LLM</label><div><input type="checkbox" id="f_use_llm" /> <span class="hint">勾選後此規則命中關鍵字還會經 LLM 二次判斷並抽參數</span></div></div>
     <div class="row llmonly"><label>觸發意圖 (intent)</label><input type="text" id="f_intent" placeholder="use_llm 開啟時必填:描述什麼情況該觸發" /></div>
     <div class="row llmonly"><label>抽取欄位 (extract)</label><input type="text" id="f_extract" placeholder="逗號分隔,可空" /></div>
@@ -92,7 +96,15 @@ let editIndex = -1;    // 正在編輯的規則索引;-1 = 新增
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function splitCsv(s) { return String(s || "").split(",").map((x) => x.trim()).filter(Boolean); }
-function roomLabel(id) { return rooms[id] && rooms[id] !== id ? `${rooms[id]}` : id; }
+// 房間 textarea:一行一個 room_id,去空白、去空行、去重(保留輸入順序)。
+function parseRoomLines(s) {
+  const seen = new Set();
+  return String(s || "").split(/\r?\n/).map((x) => x.trim()).filter((x) => x && !seen.has(x) && seen.add(x));
+}
+// 縮短房名:把名稱裡的 Matrix user id(@localpart:server)砍掉 :server 段,
+// 例如「Empty room (was @kevin.hce:ims.opscloud.info)」→「Empty room (was @kevin.hce)」。
+function shortRoomName(name) { return String(name == null ? "" : name).replace(/(@[^\s:]+):[^\s)]+/g, "$1"); }
+function roomLabel(id) { return rooms[id] && rooms[id] !== id ? shortRoomName(rooms[id]) : id; }
 function isEnabled(r) { return r.enabled !== false; } // 缺省/true=啟用;只有明確 false 才停用
 function setMsg(text, cls) { const m = document.getElementById("msg"); m.textContent = text; m.className = cls || "muted"; }
 
@@ -110,7 +122,7 @@ function fillDryRoom() {
   const sel = document.getElementById("dry_room");
   const opts = [`<option value="">全部房間(不指定)</option>`];
   for (const id of Object.keys(rooms)) {
-    const label = rooms[id] && rooms[id] !== id ? `${rooms[id]}（${id}）` : id;
+    const label = rooms[id] && rooms[id] !== id ? `${shortRoomName(rooms[id])}（${id}）` : id;
     opts.push(`<option value="${esc(id)}">${esc(label)}</option>`);
   }
   sel.innerHTML = opts.join("");
@@ -159,7 +171,7 @@ function renderList() {
     const kw = (r.keywords || []).map((k) => `<span class="tag">${esc(k)}</span>`).join("");
     const rm = (Array.isArray(r.rooms) && r.rooms.length)
       ? r.rooms.map((id) => `<span class="tag" title="${esc(id)}">${esc(roomLabel(id))}</span>`).join("")
-      : `<span class="muted">全部房間</span>`;
+      : `<span class="err">未指定房間 → 不觸發</span>`;
     const on = isEnabled(r);
     return `<tr class="${on ? "" : "off"}">
       <td>${esc(r.name)}</td>
@@ -183,16 +195,21 @@ function fillSelects(rule) {
   ts.innerHTML = tasks.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("");
   if (rule && rule.task) ts.value = rule.task;
 
-  // 房間選項(checkbox):已知房間 + 規則裡可能有但 rooms.json 還沒學到的 id,都列出來不遺漏。
-  // 勾選 = 納入此規則;都不勾 = 全部房間。
-  const ids = new Set(Object.keys(rooms));
-  if (rule && Array.isArray(rule.rooms)) rule.rooms.forEach((id) => ids.add(id));
-  const sel = new Set(rule && Array.isArray(rule.rooms) ? rule.rooms : []);
-  const rs = document.getElementById("f_rooms");
-  rs.innerHTML = [...ids].map((id) => {
-    const label = rooms[id] && rooms[id] !== id ? `${rooms[id]}（${id}）` : id;
-    return `<label class="chk"><input type="checkbox" value="${esc(id)}" ${sel.has(id) ? "checked" : ""}/> ${esc(label)}</label>`;
-  }).join("") || `<span class="muted">（尚無已知房間;bot 在房間收過訊息後才會出現,屆時再回來勾選）</span>`;
+  // 房間:textarea,一行一個 room_id。以既有規則的 rooms 帶入,並即時解析成房名回饋。
+  document.getElementById("f_rooms").value = (rule && Array.isArray(rule.rooms) ? rule.rooms : []).join("\n");
+  renderRoomResolve();
+}
+
+// 即時解析房間 textarea:逐行查 rooms.json 已知房名;查不到就標「bot 尚未看過」但仍可存。
+function renderRoomResolve() {
+  const ids = parseRoomLines(document.getElementById("f_rooms").value);
+  const box = document.getElementById("f_rooms_resolved");
+  if (!ids.length) { box.innerHTML = ""; return; }
+  box.innerHTML = ids.map((id) => {
+    const name = rooms[id];
+    if (name && name !== id) return `<div class="ok">✅ ${esc(shortRoomName(name))} <span class="rid">${esc(id)}</span></div>`;
+    return `<div class="llm">⚠️ <span class="rid">${esc(id)}</span> (bot 尚未看過此房間,將以 ID 生效)</div>`;
+  }).join("");
 }
 
 function toggleLlm() {
@@ -223,7 +240,7 @@ async function applyEdit() {
   const task = document.getElementById("f_task").value;
   const use_llm = document.getElementById("f_use_llm").checked;
   const enabled = document.getElementById("f_enabled").checked;
-  const roomsSel = [...document.querySelectorAll("#f_rooms input:checked")].map((c) => c.value);
+  const roomsSel = parseRoomLines(document.getElementById("f_rooms").value);
   const intent = document.getElementById("f_intent").value.trim();
   const extract = splitCsv(document.getElementById("f_extract").value);
 
@@ -232,10 +249,11 @@ async function applyEdit() {
   if (!keywords.length) return err("關鍵字至少一個");
   if (!task) return err("請選擇任務");
   if (use_llm && !intent) return err("使用 LLM 時,觸發意圖(intent)必填");
+  if (enabled && !roomsSel.length) return err("啟用中的規則必須至少指定一個房間(一行一個 room_id);或取消勾選「啟用」");
 
   const rule = { name, keywords, task, use_llm };
   if (!enabled) rule.enabled = false;               // 啟用為預設,只在停用時寫欄位
-  if (roomsSel.length) rule.rooms = roomsSel;       // 不選 = 全部房間(省略欄位)
+  if (roomsSel.length) rule.rooms = roomsSel;       // 留空 = 不觸發(僅停用規則允許)
   if (use_llm) { rule.intent = intent; if (extract.length) rule.extract = extract; }
   else if (extract.length) rule.extract = extract;
 
@@ -285,6 +303,7 @@ document.getElementById("saveBtn").addEventListener("click", saveAll);
 document.getElementById("applyBtn").addEventListener("click", applyEdit);
 document.getElementById("cancelBtn").addEventListener("click", closeEdit);
 document.getElementById("f_use_llm").addEventListener("change", toggleLlm);
+document.getElementById("f_rooms").addEventListener("input", renderRoomResolve);
 document.getElementById("dryBtn").addEventListener("click", dryRun);
 document.getElementById("dry_text").addEventListener("keydown", (e) => { if (e.key === "Enter") dryRun(); });
 

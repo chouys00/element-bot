@@ -1,10 +1,11 @@
 "use strict";
 const { matchRules } = require("./matcher");
 
-// 規則的房間範圍判斷:rule.rooms 缺省/空 = 全部房間;否則該訊息的 room_id 須落在清單內。
+// 規則的房間範圍判斷:rule.rooms 缺省/空 = 不觸發任何房間(規則必須明確指定房間才生效);
+// 否則該訊息的 room_id 須落在清單內。避免「忘了填房間」的規則在全部房間亂觸發。
 // 只認 room_id(全域唯一);房間顯示名可能重複,不拿來比對以免靜默誤觸發。
 function ruleMatchesRoom(rule, roomId) {
-  if (!Array.isArray(rule.rooms) || rule.rooms.length === 0) return true;
+  if (!Array.isArray(rule.rooms) || rule.rooms.length === 0) return false;
   return rule.rooms.includes(roomId);
 }
 
