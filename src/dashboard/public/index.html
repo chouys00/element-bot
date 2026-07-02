@@ -307,7 +307,8 @@ document.getElementById("roomsBtn").addEventListener("click", openRooms);
 document.getElementById("roomsClose").addEventListener("click", () => (rModal.style.display = "none"));
 document.getElementById("rc_save").addEventListener("click", saveRooms);
 document.getElementById("rc_text").addEventListener("input", renderRoomsPreview);
-rModal.addEventListener("click", (e) => { if (e.target === rModal) rModal.style.display = "none"; });
+// 只用叉按鈕與 Esc 關閉,不靠點外區域(容易誤觸)
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && rModal.style.display === "flex") rModal.style.display = "none"; });
 
 refresh();
 setInterval(refresh, 1500);
