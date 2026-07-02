@@ -53,11 +53,11 @@ function freshQueue() {
     { status: "done", rule: "週報", task: "report-skill", source: { room_id: "!r:s", sender: "@alice:s" }, summary: "已產出報表" },
     { rooms: { "!r:s": "產品群" } }
   );
-  ok("成功含 ✅", text.startsWith("✅"));
-  ok("含規則名", text.includes("週報"));
-  ok("房間名已翻譯", text.includes("產品群"));
-  ok("無顯示名時發送者縮短為 localpart", text.includes("@alice") && !text.includes("@alice:s"));
-  ok("摘要在第二行", text.split("\n")[1] === "已產出報表");
+  const lines = text.split("\n");
+  ok("首行為狀態+規則", lines[0] === "✅「週報」完成");
+  ok("房間名獨立成行,帶「聊天室」標籤", lines.some((l) => l === "聊天室:產品群"));
+  ok("無顯示名時發送者縮短為 localpart,帶「觸發人」標籤", lines.some((l) => l === "觸發人:@alice") && !text.includes("@alice:s"));
+  ok("摘要獨立成行(📝)", lines.some((l) => l === "📝 已產出報表"));
 }
 
 // formatNotify:提供 senderName → 用顯示名而非帳號
@@ -70,12 +70,13 @@ function freshQueue() {
   ok("有顯示名則不出現帳號 localpart", !text.includes("@alice"));
 }
 
-// formatNotify:失敗 + 無摘要 → 單行
+// formatNotify:失敗 + 無摘要 → 無 📝 行、無「觸發人」行(此例無 sender)
 {
   const text = formatNotify({ status: "failed", rule: "部署", source: { room_id: "!r:s" }, summary: "" }, { rooms: {} });
   ok("失敗含 ❌", text.startsWith("❌"));
-  ok("房間名 fallback 用 id", text.includes("!r:s"));
-  ok("無摘要則單行", !text.includes("\n"));
+  ok("房間名 fallback 用 id", text.includes("聊天室:!r:s"));
+  ok("無摘要則無 📝 行", !text.includes("📝"));
+  ok("無 sender 則無「觸發人」行", !text.includes("觸發人"));
 }
 
 // formatNotify:無 rule 用 task 名;source 缺房間 → 未知房間;無參數也不丟錯

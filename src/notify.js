@@ -48,10 +48,12 @@ function shortSender(sender) {
   return i > 0 ? s.slice(0, i) : s;
 }
 
-// bot 端:把通知 payload 套成訊息文字(範本 B + 免費短摘要,兩行)。
+// bot 端:把通知 payload 套成訊息文字(分行標籤,長內容各自成行避免爆版)。
 // opts = { rooms: 房間 id→名 map, senderName: 已解析的發送者顯示名(優先於帳號 localpart) }
-//   ✅「規則名」完成 · 〈房間名〉發送者顯示名
-//      摘要
+//   ✅「規則名」完成
+//   聊天室:房間名
+//   觸發人:發送者顯示名   ← 純文字標籤(非 emoji),明確是「誰發訊息觸發」而非「誰執行」,避免誤會成實作人
+//   📝 摘要
 function formatNotify(payload, opts = {}) {
   const { rooms = {}, senderName } = opts;
   const icon = payload.status === "done" ? "✅" : "❌";
@@ -61,9 +63,10 @@ function formatNotify(payload, opts = {}) {
   const roomName = (src.room_id && rooms[src.room_id]) || src.room_id || "未知房間";
   // 有顯示名用顯示名(如 Patrick.He.t),否則退回帳號 localpart(如 @patrick.zyx)。
   const who = senderName || shortSender(src.sender);
-  const sender = src.sender ? ` ${who}` : "";
-  const line1 = `${icon}「${label}」${verb} · 〈${roomName}〉${sender}`.trimEnd();
-  return payload.summary ? `${line1}\n${payload.summary}` : line1;
+  const lines = [`${icon}「${label}」${verb}`, `聊天室:${roomName}`];
+  if (src.sender) lines.push(`觸發人:${who}`);
+  if (payload.summary) lines.push(`📝 ${payload.summary}`);
+  return lines.join("\n");
 }
 
 // bot 生命週期訊息(上線/下線)。
