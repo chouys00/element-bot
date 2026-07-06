@@ -80,6 +80,7 @@ function dryRunRules(body, roomId, rules) {
     const enabled = ruleEnabled(rule);
     const room_ok = ruleMatchesRoom(rule, roomId);
     const passesGate = keyword_hit && enabled && room_ok;
+    const command = rule.command || null;
     return {
       name: rule.name,
       task: rule.task,
@@ -89,6 +90,11 @@ function dryRunRules(body, roomId, rules) {
       room_ok,
       triggers: rule.use_llm ? false : passesGate, // 非 LLM:過閘即觸發
       needs_llm: !!rule.use_llm && passesGate,      // LLM:過閘則會送 LLM 判斷
+      // skill-dispatch 試跑顯示用:原始指令模板、是否含 {佔位}(帶佔位需實跑 LLM 才有真實值)、專案路徑、房間。
+      command,
+      has_placeholder: !!command && /\{[^}]+\}/.test(command),
+      project_path: rule.project_path || null,
+      rooms: Array.isArray(rule.rooms) ? rule.rooms : [],
     };
   });
 }

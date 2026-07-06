@@ -8,6 +8,8 @@ const { readHeartbeat, isFresh } = require("../heartbeat");
 const { PROJECT_ROOTS, taskNames } = require("../taskDefs");
 const { loadRules, saveRules } = require("../rules");
 const { dryRunRules } = require("../trigger");
+const { projectCheck } = require("../projectCheck");
+const { probeRule } = require("../probe");
 const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 
@@ -22,6 +24,18 @@ function sendJson(res, code, obj) {
 }
 
 function safeId(id) { return id.length > 0 && !(id.includes("..") || id.includes("/") || id.includes("\\") || id.includes("\0")); }
+
+// 試跑用:判斷規則的房間是否「有效監聽」——每個 room_id 是否在監聽清單、且 bot 看過(roomsMap 有名 = 看過)。
+function roomMonitorStatus(rule, monitorRooms, roomsMap) {
+  const ids = Array.isArray(rule.rooms) ? rule.rooms : [];
+  if (!ids.length) return { status: "none", detail: "未指定房間 → 不觸發" };
+  const mon = new Set(monitorRooms);
+  const notMonitored = ids.filter((id) => !mon.has(id));
+  if (notMonitored.length) return { status: "unmonitored", detail: `${notMonitored.length} 個房間不在監聽清單` };
+  const notSeen = ids.filter((id) => !roomsMap[id]);
+  if (notSeen.length) return { status: "unseen", detail: `已設監聽但 bot 尚未看過 ${notSeen.length} 個房間(可能還沒收到訊息)` };
+  return { status: "ok", detail: "房間都在監聽清單且 bot 已看過" };
+}
 
 // 讀取 request body(有上限,避免被灌爆)。
 function readBody(req, limit = 1024 * 1024) {
@@ -57,7 +71,37 @@ function createServer(deps) {
           const roomId = typeof parsed.room_id === "string" ? parsed.room_id : undefined;
           let rules = [];
           try { rules = loadRules(rulesPath); } catch (_) {}
-          return sendJson(res, 200, { results: dryRunRules(body, roomId, rules) });
+          const monitorRooms = resolveRoomIds(storageDir, envRoomIds);
+          const roomsMap = readRoomsMap(storageDir);
+          const results = dryRunRules(body, roomId, rules).map((r) => ({
+            ...r,
+            room_monitor: roomMonitorStatus(r, monitorRooms, roomsMap),
+            project_check: r.task === "skill-dispatch" ? projectCheck(r.project_path) : null,
+          }));
+          return sendJson(res, 200, { results });
+        }
+        // 實跑連通測試(單條 skill-dispatch 規則):judge 抽參 → 填指令 → 派 claude 唯讀探測。
+        // 會花一點 quota,故單條、按需。路徑不健康(不存在/非 git)先擋,不浪費 claude 呼叫。
+        if (p === "/api/rules/probe") {
+          let raw;
+          try { raw = await readBody(req); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+          let parsed;
+          try { parsed = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          const body = typeof parsed.body === "string" ? parsed.body : "";
+          const index = Number.isInteger(parsed.index) ? parsed.index : -1;
+          let rules = [];
+          try { rules = loadRules(rulesPath); } catch (_) {}
+          const rule = rules[index];
+          if (!rule) { res.writeHead(404); return res.end("no such rule"); }
+          if (rule.task !== "skill-dispatch") { res.writeHead(400); return res.end("only skill-dispatch can probe"); }
+          const chk = projectCheck(rule.project_path);
+          if (!chk.exists || !chk.is_git) return sendJson(res, 200, { blocked: true, project_check: chk });
+          try {
+            const result = await probeRule(rule, body);
+            return sendJson(res, 200, { ...result, project_check: chk });
+          } catch (e) {
+            return sendJson(res, 200, { error: String((e && e.message) || e), project_check: chk });
+          }
         }
         const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|verify|open)$/);
         if (m) {

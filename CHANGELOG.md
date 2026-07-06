@@ -12,6 +12,18 @@
 - 真正的 bot 掉線偵測(需獨立 watchdog 常駐,另開一組 Matrix 登入)。目前僅 bot 自身「上線/下線」盡力而為通知。
 - 通知第二行摘要開關(目前固定顯示;摘要為 summarize 步驟固定產出,不耗 token)。
 
+## [1.7.0] - 2026-07-06
+
+### 新增
+- **連通性試跑(規則試跑強化)**:在 dashboard 就能確認整條自動化是否打通,不必真的發訊息。
+  - 試跑結果每條規則新增三欄(靜態、零 quota):**房間監聽**(房間是否在監聽清單且 bot 看過)、**送出指令**(固定指令直接顯示;帶 `{佔位}` 顯示模板並標「點實跑看真實值」)、**專案健檢**(skill-dispatch 的 `project_path` 是否存在/是 git/乾淨)。
+  - skill-dispatch 規則可按「🔌 實跑」做**按需連通測試**:跑一次 LLM 抽參填出真實指令,並派 claude **唯讀**進專案回報「我在哪、收到什麼指令、會用哪個 skill」,但不執行、不改檔、不 commit。
+  - 新增 [projectCheck.js](src/projectCheck.js)(路徑健檢,回報而非丟錯)、[probe.js](src/probe.js)(judge 抽參 + claude 唯讀探測,用非阻塞 `spawn` 避免凍住 dashboard)。
+  - `trigger.js` 的 `dryRunRules` 帶出 command/佔位/專案路徑;新增 `POST /api/rules/probe`(單條實跑,路徑不健康先擋、不浪費 claude 呼叫)。
+
+### 已知限制
+- 「實跑」會讓 dashboard 程序 spawn 無人 claude(`--dangerously-skip-permissions`);本機(127.0.0.1)用可接受,**開放遠端前必須先加登入驗證**(既有待辦,此功能讓它更重要)。
+
 ## [1.6.0] - 2026-07-02
 
 ### 新增

@@ -188,6 +188,23 @@ function recIn(roomId, body) {
     ok("房間相符時限房間規則會觸發", res3.find((r) => r.name === "限房間").triggers === true);
   }
 
+  // ── dryRunRules 帶出 skill-dispatch 的指令/佔位/專案路徑(供試跑顯示「會送什麼」)──
+  {
+    const rules = [
+      { name: "固定", keywords: ["啟動"], task: "skill-dispatch", project_path: "D:\\P", command: "啟動", use_llm: false, rooms: ["!a:s"] },
+      { name: "帶參", keywords: ["打開"], task: "skill-dispatch", project_path: "D:\\P", command: "啟動 {目標}", use_llm: true, intent: "x", extract: ["目標"], rooms: ["!a:s"] },
+    ];
+    const res = dryRunRules("啟動", "!a:s", rules);
+    const fixed = res.find((r) => r.name === "固定");
+    ok("dryRun 帶出 command", fixed.command === "啟動");
+    ok("固定指令 has_placeholder=false", fixed.has_placeholder === false);
+    ok("dryRun 帶出 project_path", fixed.project_path === "D:\\P");
+    ok("dryRun 帶出 rooms", Array.isArray(fixed.rooms) && fixed.rooms[0] === "!a:s");
+    const param = res.find((r) => r.name === "帶參");
+    ok("帶佔位 has_placeholder=true", param.has_placeholder === true);
+    ok("非 skill-dispatch 無 command 時為 null", dryRunRules("幫我改顏色", "!z:s", [{ name: "x", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!z:s"] }])[0].command === null);
+  }
+
   // ── fillTemplate:把 {佔位} 用 params 填掉(支援中文 key)──
   ok("fillTemplate 填入 params", fillTemplate("/i18n {路徑}", { 路徑: "a/b" }) === "/i18n a/b");
   ok("fillTemplate 缺參數填空字串", fillTemplate("/i18n {路徑}", {}) === "/i18n ");

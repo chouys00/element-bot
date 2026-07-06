@@ -40,6 +40,9 @@
   tr.off td { opacity: .45; }
   tr.off td.actions, tr.off td:nth-child(6) { opacity: 1; }
   .sw { cursor: pointer; }
+  code { background: #0f1115; border: 1px solid #30363d; border-radius: 4px; padding: 1px 5px; font-size: 12px; color: #79c0ff; }
+  #probeResult .panel { margin-top: 8px; }
+  #probeResult pre { white-space: pre-wrap; background: #0f1115; border: 1px solid #30363d; border-radius: 6px; padding: 8px; font-size: 12px; max-height: 300px; overflow: auto; margin: 4px 0 0; }
 </style>
 </head>
 <body>
@@ -55,11 +58,12 @@
   </div>
 
   <details class="panel" id="dryPanel">
-    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽會命中哪些規則(不會真的觸發,也不跑 LLM)</summary>
+    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽命中/房間監聽/送出指令/專案健檢(靜態零成本);skill-dispatch 可再「實跑」確認 claude 收到什麼</summary>
     <div class="row" style="margin-top:12px"><label>訊息文字</label><input type="text" id="dry_text" placeholder="例如:幫我把背景改成紅色" /></div>
     <div class="row"><label>房間</label><select id="dry_room"></select></div>
     <div class="bar"><button class="abtn primary" id="dryBtn">試跑</button><span class="hint">房間選「全部房間」時,有限定房間的規則會以「房間不符」呈現</span></div>
     <div id="dryResult" style="margin-top:10px"></div>
+    <div id="probeResult" style="margin-top:6px"></div>
   </details>
 
   <div class="panel">
@@ -150,21 +154,90 @@ async function dryRun() {
 
 function renderDryResult(results) {
   const out = document.getElementById("dryResult");
+  document.getElementById("probeResult").innerHTML = ""; // 清掉上次實跑結果
   if (!results.length) { out.innerHTML = `<span class="muted">（尚無規則)</span>`; return; }
-  const rows = results.map((r) => {
+  const rows = results.map((r, i) => {
+    // 觸發判斷
     let verdict, cls;
     if (r.triggers) { verdict = "✅ 會觸發"; cls = "ok"; }
-    else if (r.needs_llm) { verdict = "🤖 關鍵字命中 → 會送 LLM 二次判斷(此處不實跑)"; cls = "llm"; }
+    else if (r.needs_llm) { verdict = "🤖 送 LLM 判斷"; cls = "llm"; }
     else {
       const reasons = [];
       if (!r.keyword_hit) reasons.push("關鍵字未命中");
-      if (!r.enabled) reasons.push("規則已停用");
+      if (!r.enabled) reasons.push("已停用");
       if (!r.room_ok) reasons.push("房間不符");
       verdict = `⬜ 不觸發（${reasons.join("、") || "—"}）`; cls = "muted";
     }
-    return `<tr><td>${esc(r.name)}</td><td class="muted">${esc(r.task)}</td><td class="${cls}">${verdict}</td></tr>`;
+    // 房間監聽狀態
+    const rm = r.room_monitor || { status: "none", detail: "" };
+    const rmCell = ({
+      ok: `<span class="ok" title="${esc(rm.detail)}">✅ 有效</span>`,
+      unseen: `<span class="llm" title="${esc(rm.detail)}">⚠️ 未看過</span>`,
+      unmonitored: `<span class="err" title="${esc(rm.detail)}">❌ 未監聽</span>`,
+      none: `<span class="muted">—</span>`,
+    })[rm.status] || `<span class="muted">—</span>`;
+    // 送出指令(固定=真實;帶佔位=模板,需實跑才有真實值)
+    let cmdCell = `<span class="muted">—</span>`;
+    if (r.command != null) {
+      cmdCell = r.has_placeholder
+        ? `<code>${esc(r.command)}</code> <span class="hint">帶參數,點實跑看真實值</span>`
+        : `<code>${esc(r.command)}</code>`;
+    }
+    // 專案健檢(skill-dispatch)
+    let pcCell = `<span class="muted">—</span>`;
+    if (r.project_check) {
+      const c = r.project_check;
+      if (c.clean) pcCell = `<span class="ok" title="${esc(c.detail)}">✅ 乾淨</span>`;
+      else if (c.exists && c.is_git) pcCell = `<span class="llm" title="${esc(c.detail)}">⚠️ 有改動</span>`;
+      else pcCell = `<span class="err" title="${esc(c.detail)}">❌ ${esc(c.detail)}</span>`;
+    }
+    // 實跑按鈕(僅 skill-dispatch)
+    const probeCell = r.task === "skill-dispatch"
+      ? `<button class="abtn" data-probe="${i}" data-rule="${esc(r.name)}">🔌 實跑</button>`
+      : `<span class="muted">—</span>`;
+    return `<tr><td>${esc(r.name)}</td><td class="${cls}">${verdict}</td><td>${rmCell}</td><td>${cmdCell}</td><td>${pcCell}</td><td>${probeCell}</td></tr>`;
   }).join("");
-  out.innerHTML = `<table><thead><tr><th>規則</th><th>任務</th><th>試跑結果</th></tr></thead><tbody>${rows}</tbody></table>`;
+  out.innerHTML = `<table><thead><tr><th>規則</th><th>觸發判斷</th><th>房間監聽</th><th>送出指令</th><th>專案健檢</th><th>實跑</th></tr></thead><tbody>${rows}</tbody></table>`;
+  out.querySelectorAll("[data-probe]").forEach((b) => b.addEventListener("click", () => doProbe(+b.dataset.probe, b.dataset.rule)));
+}
+
+// 實跑連通測試:對單條 skill-dispatch 規則,用試跑訊息跑 judge + 派 claude 唯讀探測(花一點 quota)。
+async function doProbe(index, ruleName) {
+  const body = document.getElementById("dry_text").value;
+  const out = document.getElementById("probeResult");
+  if (!body.trim()) { out.innerHTML = `<span class="err">請先在上方輸入訊息文字,再實跑。</span>`; return; }
+  out.innerHTML = `<span class="muted">🔌 實跑探測「${esc(ruleName)}」中… 派 claude 進專案唯讀確認,約需數十秒,請稍候。</span>`;
+  try {
+    const res = await fetch("/api/rules/probe", { method: "POST", body: JSON.stringify({ index, body }) });
+    if (!res.ok) { out.innerHTML = `<span class="err">實跑失敗:${esc(await res.text())}</span>`; return; }
+    renderProbeResult(await res.json(), ruleName);
+  } catch (e) {
+    out.innerHTML = `<span class="err">實跑失敗:${esc(e.message)}</span>`;
+  }
+}
+
+function renderProbeResult(d, ruleName) {
+  const out = document.getElementById("probeResult");
+  if (d.blocked) {
+    out.innerHTML = `<div class="panel"><b>🔌 ${esc(ruleName)}</b> <span class="err">專案路徑不可用:${esc((d.project_check && d.project_check.detail) || "")},已跳過(不浪費 claude 呼叫)</span></div>`;
+    return;
+  }
+  if (d.error) {
+    out.innerHTML = `<div class="panel"><b>🔌 ${esc(ruleName)}</b> <span class="err">探測出錯:${esc(d.error)}</span></div>`;
+    return;
+  }
+  const params = d.params || {};
+  const paramStr = Object.keys(params).length ? Object.entries(params).map(([k, v]) => `${esc(k)}=${esc(v)}`).join("、") : "(無)";
+  let html = `<div class="panel"><b>🔌 實跑結果:${esc(ruleName)}</b>`;
+  html += `<div style="margin-top:6px">LLM 判定:${d.trigger ? `<span class="ok">會觸發</span>` : `<span class="err">不觸發</span>`}　抽取參數:${esc(paramStr)}</div>`;
+  html += `<div style="margin-top:4px">實際送出指令:<code>${esc(d.rendered_command)}</code></div>`;
+  if (d.trigger && d.probe) {
+    html += `<div style="margin-top:6px" class="hint">專案(claude 唯讀)回報:</div><pre>${esc(d.probe.output)}</pre>`;
+  } else if (!d.trigger) {
+    html += `<div class="muted" style="margin-top:6px">LLM 判定不觸發,未派 claude 探測。</div>`;
+  }
+  html += `</div>`;
+  out.innerHTML = html;
 }
 
 function renderList() {
