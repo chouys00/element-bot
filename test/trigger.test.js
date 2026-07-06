@@ -186,6 +186,15 @@ function recIn(roomId, body) {
 
     const res3 = dryRunRules("幫我改顏色", "!a:s", rules);
     ok("房間相符時限房間規則會觸發", res3.find((r) => r.name === "限房間").triggers === true);
+
+    // roomId 未指定(UI「全部房間」):有設房間的規則不因房間被擋,聚焦關鍵字/啟用。
+    const resAll = dryRunRules("幫我改顏色", undefined, rules);
+    ok("全部房間:有房間的規則 room_ok=true", resAll.find((r) => r.name === "限房間").room_ok === true);
+    ok("全部房間:關鍵字命中且非 LLM → 會觸發", resAll.find((r) => r.name === "限房間").triggers === true);
+    ok("全部房間:停用規則仍不觸發", resAll.find((r) => r.name === "停用的").triggers === false);
+    // 沒設房間的規則:即使「全部房間」也不放行(本就永遠不觸發)。
+    const resNoRoom = dryRunRules("改顏色", undefined, [{ name: "無房間", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]);
+    ok("全部房間:沒設房間的規則 room_ok=false", resNoRoom[0].room_ok === false);
   }
 
   // ── dryRunRules 帶出 skill-dispatch 的指令/佔位/專案路徑(供試跑顯示「會送什麼」)──

@@ -75,10 +75,15 @@ async function runTriggerPipeline(rec, deps) {
 // use_llm 規則:關鍵字+啟用+房間都過才會「送 LLM 二次判斷」,最終是否觸發仍看 LLM(此處不實跑,標 needs_llm)。
 function dryRunRules(body, roomId, rules) {
   const list = Array.isArray(rules) ? rules : [];
+  // roomId 未指定(UI「全部房間」)= 不比對特定房間:只要規則本身有設房間就算通過房間檢查
+  //(等於「假設在該規則的目標房間內」,聚焦關鍵字/啟用);有指定房間才真的比對 room_id。
+  //(沒設房間的規則本就永遠不觸發,故不因「全部房間」放行。)
+  const roomSpecified = typeof roomId === "string" && roomId.length > 0;
   return list.map((rule) => {
     const keyword_hit = matchRules(body, [rule]).length > 0;
     const enabled = ruleEnabled(rule);
-    const room_ok = ruleMatchesRoom(rule, roomId);
+    const hasRooms = Array.isArray(rule.rooms) && rule.rooms.length > 0;
+    const room_ok = roomSpecified ? ruleMatchesRoom(rule, roomId) : hasRooms;
     const passesGate = keyword_hit && enabled && room_ok;
     const command = rule.command || null;
     return {
