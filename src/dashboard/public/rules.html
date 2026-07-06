@@ -166,7 +166,7 @@ function renderDryResult(results) {
       if (!r.keyword_hit) reasons.push("關鍵字未命中");
       if (!r.enabled) reasons.push("已停用");
       if (!r.room_ok) reasons.push("房間不符");
-      verdict = `⬜ 不觸發（${reasons.join("、") || "—"}）`; cls = "muted";
+      verdict = `❌ 不觸發（${reasons.join("、") || "—"}）`; cls = "muted";
     }
     // 房間監聽狀態
     const rm = r.room_monitor || { status: "none", detail: "" };
@@ -201,34 +201,49 @@ function renderDryResult(results) {
   out.querySelectorAll("[data-probe]").forEach((b) => b.addEventListener("click", () => doProbe(+b.dataset.probe, b.dataset.rule)));
 }
 
+// probeResult 面板統一收合用:標題列右側加 ✕,點擊清空面板。
+function closeBtnHtml() { return `<button class="abtn" data-close-probe style="float:right;padding:2px 8px">✕</button>`; }
+function wireCloseBtn() {
+  const btn = document.querySelector("#probeResult [data-close-probe]");
+  if (btn) btn.addEventListener("click", () => { document.getElementById("probeResult").innerHTML = ""; });
+}
+
 // 實跑連通測試:對單條 skill-dispatch 規則,用試跑訊息跑 judge + 派 claude 唯讀探測(花一點 quota)。
 async function doProbe(index, ruleName) {
   const body = document.getElementById("dry_text").value;
   const out = document.getElementById("probeResult");
   if (!body.trim()) { out.innerHTML = `<span class="err">請先在上方輸入訊息文字,再實跑。</span>`; return; }
-  out.innerHTML = `<span class="muted">🔌 實跑探測「${esc(ruleName)}」中… 派 claude 進專案唯讀確認,約需數十秒,請稍候。</span>`;
+  out.innerHTML = `<div class="panel">${closeBtnHtml()}<span class="muted">🔌 實跑探測「${esc(ruleName)}」中… 派 claude 進專案唯讀確認,約需數十秒,請稍候。</span></div>`;
+  wireCloseBtn();
   try {
     const res = await fetch("/api/rules/probe", { method: "POST", body: JSON.stringify({ index, body }) });
-    if (!res.ok) { out.innerHTML = `<span class="err">實跑失敗:${esc(await res.text())}</span>`; return; }
+    if (!res.ok) {
+      out.innerHTML = `<div class="panel">${closeBtnHtml()}<span class="err">實跑失敗:${esc(await res.text())}</span></div>`;
+      wireCloseBtn();
+      return;
+    }
     renderProbeResult(await res.json(), ruleName);
   } catch (e) {
-    out.innerHTML = `<span class="err">實跑失敗:${esc(e.message)}</span>`;
+    out.innerHTML = `<div class="panel">${closeBtnHtml()}<span class="err">實跑失敗:${esc(e.message)}</span></div>`;
+    wireCloseBtn();
   }
 }
 
 function renderProbeResult(d, ruleName) {
   const out = document.getElementById("probeResult");
   if (d.blocked) {
-    out.innerHTML = `<div class="panel"><b>🔌 ${esc(ruleName)}</b> <span class="err">專案路徑不可用:${esc((d.project_check && d.project_check.detail) || "")},已跳過(不浪費 claude 呼叫)</span></div>`;
+    out.innerHTML = `<div class="panel">${closeBtnHtml()}<b>🔌 ${esc(ruleName)}</b> <span class="err">專案路徑不可用:${esc((d.project_check && d.project_check.detail) || "")},已跳過(不浪費 claude 呼叫)</span></div>`;
+    wireCloseBtn();
     return;
   }
   if (d.error) {
-    out.innerHTML = `<div class="panel"><b>🔌 ${esc(ruleName)}</b> <span class="err">探測出錯:${esc(d.error)}</span></div>`;
+    out.innerHTML = `<div class="panel">${closeBtnHtml()}<b>🔌 ${esc(ruleName)}</b> <span class="err">探測出錯:${esc(d.error)}</span></div>`;
+    wireCloseBtn();
     return;
   }
   const params = d.params || {};
   const paramStr = Object.keys(params).length ? Object.entries(params).map(([k, v]) => `${esc(k)}=${esc(v)}`).join("、") : "(無)";
-  let html = `<div class="panel"><b>🔌 實跑結果:${esc(ruleName)}</b>`;
+  let html = `<div class="panel">${closeBtnHtml()}<b>🔌 實跑結果:${esc(ruleName)}</b>`;
   html += `<div style="margin-top:6px">LLM 判定:${d.trigger ? `<span class="ok">會觸發</span>` : `<span class="err">不觸發</span>`}　抽取參數:${esc(paramStr)}</div>`;
   html += `<div style="margin-top:4px">實際送出指令:<code>${esc(d.rendered_command)}</code></div>`;
   if (d.trigger && d.probe) {
@@ -238,6 +253,7 @@ function renderProbeResult(d, ruleName) {
   }
   html += `</div>`;
   out.innerHTML = html;
+  wireCloseBtn();
 }
 
 function renderList() {
