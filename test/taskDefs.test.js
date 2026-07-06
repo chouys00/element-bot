@@ -36,11 +36,28 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("專案逸出 DEMO_ROOT 丟錯", threw);
 }
 
+// 通用任務 skill-dispatch:路徑與指令都由 task 帶入(規則資料),定義本身固定。
+{
+  const def = getTaskDef("skill-dispatch");
+  ok("找得到 skill-dispatch", !!def);
+  ok("skill-dispatch sourceDir 用 task.project_path", def.sourceDir({ project_path: "D:\\GB\\GBH5" }).includes("GBH5"));
+  {
+    let threw = false;
+    try { def.sourceDir({}); } catch (_) { threw = true; }
+    ok("skill-dispatch 缺 project_path 丟錯", threw);
+  }
+  ok("skill-dispatch prompt 帶入指令", def.prompt({ command: "/i18n pages/activity" }).includes("/i18n pages/activity"));
+  ok("skill-dispatch prompt 提及用 skill 識別", def.prompt({ command: "啟動" }).includes("skill"));
+  ok("skill-dispatch prompt 含安全紅線", def.prompt({ command: "啟動" }).includes("安全紅線"));
+  ok("skill-dispatch 不跑 verify(verifyArgs null)", def.verifyArgs == null);
+}
+
 {
   const names = taskNames();
   ok("taskNames 回傳陣列", Array.isArray(names));
   ok("taskNames 含 demo-skill", names.includes("demo-skill"));
   ok("taskNames 含 i18n-skill", names.includes("i18n-skill"));
+  ok("taskNames 含 skill-dispatch", names.includes("skill-dispatch"));
 }
 
 console.log(`taskDefs.test.js: ${passed} 項通過 ✅`);

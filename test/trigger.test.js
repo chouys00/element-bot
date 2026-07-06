@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("assert");
-const { runTriggerPipeline, dryRunRules } = require("../src/trigger");
+const { runTriggerPipeline, dryRunRules, fillTemplate } = require("../src/trigger");
 
 let passed = 0;
 function ok(name, cond) {
@@ -186,6 +186,67 @@ function recIn(roomId, body) {
 
     const res3 = dryRunRules("幫我改顏色", "!a:s", rules);
     ok("房間相符時限房間規則會觸發", res3.find((r) => r.name === "限房間").triggers === true);
+
+    // roomId 未指定(UI「全部房間」):有設房間的規則不因房間被擋,聚焦關鍵字/啟用。
+    const resAll = dryRunRules("幫我改顏色", undefined, rules);
+    ok("全部房間:有房間的規則 room_ok=true", resAll.find((r) => r.name === "限房間").room_ok === true);
+    ok("全部房間:關鍵字命中且非 LLM → 會觸發", resAll.find((r) => r.name === "限房間").triggers === true);
+    ok("全部房間:停用規則仍不觸發", resAll.find((r) => r.name === "停用的").triggers === false);
+    // 沒設房間的規則:即使「全部房間」也不放行(本就永遠不觸發)。
+    const resNoRoom = dryRunRules("改顏色", undefined, [{ name: "無房間", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]);
+    ok("全部房間:沒設房間的規則 room_ok=false", resNoRoom[0].room_ok === false);
+  }
+
+  // ── dryRunRules 帶出 skill-dispatch 的指令/佔位/專案路徑(供試跑顯示「會送什麼」)──
+  {
+    const rules = [
+      { name: "固定", keywords: ["啟動"], task: "skill-dispatch", project_path: "D:\\P", command: "啟動", use_llm: false, rooms: ["!a:s"] },
+      { name: "帶參", keywords: ["打開"], task: "skill-dispatch", project_path: "D:\\P", command: "啟動 {目標}", use_llm: true, intent: "x", extract: ["目標"], rooms: ["!a:s"] },
+    ];
+    const res = dryRunRules("啟動", "!a:s", rules);
+    const fixed = res.find((r) => r.name === "固定");
+    ok("dryRun 帶出 command", fixed.command === "啟動");
+    ok("固定指令 has_placeholder=false", fixed.has_placeholder === false);
+    ok("dryRun 帶出 project_path", fixed.project_path === "D:\\P");
+    ok("dryRun 帶出 rooms", Array.isArray(fixed.rooms) && fixed.rooms[0] === "!a:s");
+    const param = res.find((r) => r.name === "帶參");
+    ok("帶佔位 has_placeholder=true", param.has_placeholder === true);
+    ok("非 skill-dispatch 無 command 時為 null", dryRunRules("幫我改顏色", "!z:s", [{ name: "x", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!z:s"] }])[0].command === null);
+  }
+
+  // ── fillTemplate:把 {佔位} 用 params 填掉(支援中文 key)──
+  ok("fillTemplate 填入 params", fillTemplate("/i18n {路徑}", { 路徑: "a/b" }) === "/i18n a/b");
+  ok("fillTemplate 缺參數填空字串", fillTemplate("/i18n {路徑}", {}) === "/i18n ");
+  ok("fillTemplate 無佔位原樣回傳", fillTemplate("啟動", {}) === "啟動");
+  ok("fillTemplate 多佔位", fillTemplate("{a}-{b}", { a: "1", b: "2" }) === "1-2");
+
+  // ── 通用任務 skill-dispatch:帶 project_path,並用 params 填充 command ──
+  {
+    const enqueued = [];
+    const rules = [{ name: "H5多語系", keywords: ["多語系"], task: "skill-dispatch",
+      project_path: "D:\\GB\\GBH5", command: "/i18n {路徑}",
+      use_llm: true, intent: "x", extract: ["路徑"], rooms: ["!r:s"] }];
+    await runTriggerPipeline(rec("幫我把 activity 轉多語系"), {
+      rules,
+      judgeFn: async () => ({ trigger: true, params: { 路徑: "pages/activity" } }),
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("skill-dispatch 任務帶 project_path", enqueued[0].project_path === "D:\\GB\\GBH5");
+    ok("command 用 params 填充後入列", enqueued[0].command === "/i18n pages/activity");
+  }
+
+  {
+    const enqueued = [];
+    const rules = [{ name: "啟動H5", keywords: ["打開H5"], task: "skill-dispatch",
+      project_path: "D:\\GB\\GBH5", command: "啟動", use_llm: false, rooms: ["!r:s"] }];
+    await runTriggerPipeline(rec("幫我打開H5"), {
+      rules,
+      judgeFn: async () => { throw new Error("不該被呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("固定 command(無佔位)原樣帶入", enqueued[0].command === "啟動");
   }
 
   console.log(`trigger.test.js: ${passed} 項通過 ✅`);

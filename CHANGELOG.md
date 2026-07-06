@@ -12,6 +12,33 @@
 - 真正的 bot 掉線偵測(需獨立 watchdog 常駐,另開一組 Matrix 登入)。目前僅 bot 自身「上線/下線」盡力而為通知。
 - 通知第二行摘要開關(目前固定顯示;摘要為 summarize 步驟固定產出,不耗 token)。
 
+## [1.7.0] - 2026-07-06
+
+### 新增
+- **連通性試跑(規則試跑強化)**:在 dashboard 就能確認整條自動化是否打通,不必真的發訊息。
+  - 試跑結果每條規則新增三欄(靜態、零 quota):**房間監聽**(房間是否在監聽清單且 bot 看過)、**送出指令**(固定指令直接顯示;帶 `{佔位}` 顯示模板並標「點實跑看真實值」)、**專案健檢**(skill-dispatch 的 `project_path` 是否存在/是 git/乾淨)。
+  - skill-dispatch 規則可按「🔌 實跑」做**按需連通測試**:跑一次 LLM 抽參填出真實指令,並派 claude **唯讀**進專案回報「我在哪、收到什麼指令、會用哪個 skill」,但不執行、不改檔、不 commit。
+  - 新增 [projectCheck.js](src/projectCheck.js)(路徑健檢,回報而非丟錯)、[probe.js](src/probe.js)(judge 抽參 + claude 唯讀探測,用非阻塞 `spawn` 避免凍住 dashboard)。
+  - `trigger.js` 的 `dryRunRules` 帶出 command/佔位/專案路徑;新增 `POST /api/rules/probe`(單條實跑,路徑不健康先擋、不浪費 claude 呼叫)。
+  - 試跑結果欄位順序調整為「規則/觸發判斷/房間監聽/**專案健檢**/**送出指令**/實跑」,讓「送出指令(模板)」緊鄰「實跑」(真實值),閱讀順序對齊管線。
+  - 「實跑」按鈕在**這則訊息不會觸發此規則**或**專案路徑不健康**時停用(灰底 + 滑過顯示原因),避免白跑浪費 quota;仍會觸發或待送 LLM 判斷、僅房間未監聽時維持可按。
+
+### 已知限制
+- 「實跑」會讓 dashboard 程序 spawn 無人 claude(`--dangerously-skip-permissions`);本機(127.0.0.1)用可接受,**開放遠端前必須先加登入驗證**(既有待辦,此功能讓它更重要)。
+
+## [1.6.0] - 2026-07-02
+
+### 新增
+- **通用任務 `skill-dispatch` + 規則專案/指令欄位**:讓一條規則能監聽訊息 → 擷取關鍵資訊 → 轉成指令 → 派發 headless claude 到**任意絕對路徑**的專案,由 claude 用該專案的 `.claude/skills` 機制識別並執行。加新專案/新 skill 只需加規則、**不必改程式碼**。
+  - `taskDefs.js` 新增通用任務 `skill-dispatch`(「計程車」模型):專案路徑(`project_path`)與指令(`command`)都由規則資料帶入,任務定義本身固定;不做 root 逸出檢查,存在性與 git 乾淨由 executor 的 `prepare` 把關。
+  - 規則新增選填欄位 `project_path`、`command`(`rules.js` 驗證);`command` 支援 `{欄位}` 佔位,用 LLM 抽取的 `params` 填入(如 `/i18n {路徑}` → `/i18n pages/activity`)。
+  - `trigger.js` 新增 `fillTemplate()` 做佔位填充,組任務時帶入 `project_path` 與填好的 `command`。
+  - 規則編輯 UI(`rules.html`)新增「專案路徑」「指令 (command)」欄位,僅在任務選 `skill-dispatch` 時顯示。
+  - 端到端驗證通過:真 claude 能識別專案 skill;element-bot 管線能派發、動手改檔、狀態更新 `done`,且遵守禁止提交。
+
+### 已知限制
+- 主控台任務列表的「開啟(專案資料夾)」按鈕白名單目前僅認 `FTL_ROOT`/`DEMO_ROOT`;`skill-dispatch` 的任意路徑專案按「開啟」會被擋(待後續放寬)。
+
 ## [1.5.0] - 2026-07-02
 
 ### 新增

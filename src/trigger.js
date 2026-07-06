@@ -14,6 +14,16 @@ function ruleEnabled(rule) {
   return rule.enabled !== false;
 }
 
+// 把指令模板裡的 {佔位} 用 params 填掉(支援中文 key,如 {路徑})。
+// 找不到對應 param 的佔位填空字串;無佔位則原樣回傳。供 skill-dispatch 通用任務把
+// LLM 擷取出的關鍵訊息組成專案 skill 認得的指令(如 "/i18n {路徑}" → "/i18n pages/activity")。
+function fillTemplate(template, params) {
+  return String(template).replace(/\{([^}]+)\}/g, (_, key) => {
+    const k = key.trim();
+    return params && params[k] != null ? String(params[k]) : "";
+  });
+}
+
 // 觸發管線(注入 judgeFn / enqueueFn / logger 以利測試與替換)。
 // deps = { rules, judgeFn(rule, body)->{trigger,params}, enqueueFn(task)->filepath, logger }
 // 對一則正規化訊息 rec:關鍵字粗篩 → 房間範圍過濾 → 逐條決定直接觸發或經 LLM → 觸發則 enqueue。
@@ -40,6 +50,10 @@ async function runTriggerPipeline(rec, deps) {
         rule: rule.name,
         task: rule.task,
         params,
+        // 通用任務 skill-dispatch 用:專案路徑原樣帶入;指令模板用 params 填好後帶入。
+        // 兩者為選填(內建任務不需要),故只在規則有設時才加進 task。
+        ...(rule.project_path ? { project_path: rule.project_path } : {}),
+        ...(rule.command ? { command: fillTemplate(rule.command, params) } : {}),
         source: {
           room_id: rec.room_id,
           sender: rec.sender,
@@ -61,11 +75,17 @@ async function runTriggerPipeline(rec, deps) {
 // use_llm 規則:關鍵字+啟用+房間都過才會「送 LLM 二次判斷」,最終是否觸發仍看 LLM(此處不實跑,標 needs_llm)。
 function dryRunRules(body, roomId, rules) {
   const list = Array.isArray(rules) ? rules : [];
+  // roomId 未指定(UI「全部房間」)= 不比對特定房間:只要規則本身有設房間就算通過房間檢查
+  //(等於「假設在該規則的目標房間內」,聚焦關鍵字/啟用);有指定房間才真的比對 room_id。
+  //(沒設房間的規則本就永遠不觸發,故不因「全部房間」放行。)
+  const roomSpecified = typeof roomId === "string" && roomId.length > 0;
   return list.map((rule) => {
     const keyword_hit = matchRules(body, [rule]).length > 0;
     const enabled = ruleEnabled(rule);
-    const room_ok = ruleMatchesRoom(rule, roomId);
+    const hasRooms = Array.isArray(rule.rooms) && rule.rooms.length > 0;
+    const room_ok = roomSpecified ? ruleMatchesRoom(rule, roomId) : hasRooms;
     const passesGate = keyword_hit && enabled && room_ok;
+    const command = rule.command || null;
     return {
       name: rule.name,
       task: rule.task,
@@ -75,8 +95,13 @@ function dryRunRules(body, roomId, rules) {
       room_ok,
       triggers: rule.use_llm ? false : passesGate, // 非 LLM:過閘即觸發
       needs_llm: !!rule.use_llm && passesGate,      // LLM:過閘則會送 LLM 判斷
+      // skill-dispatch 試跑顯示用:原始指令模板、是否含 {佔位}(帶佔位需實跑 LLM 才有真實值)、專案路徑、房間。
+      command,
+      has_placeholder: !!command && /\{[^}]+\}/.test(command),
+      project_path: rule.project_path || null,
+      rooms: Array.isArray(rule.rooms) ? rule.rooms : [],
     };
   });
 }
 
-module.exports = { runTriggerPipeline, ruleMatchesRoom, ruleEnabled, dryRunRules };
+module.exports = { runTriggerPipeline, ruleMatchesRoom, ruleEnabled, dryRunRules, fillTemplate };

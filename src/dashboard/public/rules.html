@@ -16,6 +16,8 @@
   th { color: #9aa; font-weight: 600; }
   .abtn { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; text-decoration: none; }
   .abtn:hover { border-color: #58a6ff; color: #79b8ff; }
+  .abtn:disabled { opacity: .4; cursor: not-allowed; }
+  .abtn:disabled:hover { border-color: #30363d; color: #c9d1d9; }
   .abtn.primary { background: #1f6feb; color: #fff; border-color: #1f6feb; }
   .abtn.primary:hover { background: #388bfd; color: #fff; }
   .abtn.danger:hover { border-color: #ef4444; color: #ff9d96; }
@@ -40,6 +42,9 @@
   tr.off td { opacity: .45; }
   tr.off td.actions, tr.off td:nth-child(6) { opacity: 1; }
   .sw { cursor: pointer; }
+  code { background: #0f1115; border: 1px solid #30363d; border-radius: 4px; padding: 1px 5px; font-size: 12px; color: #79c0ff; }
+  #probeResult .panel { margin-top: 8px; }
+  #probeResult pre { white-space: pre-wrap; background: #0f1115; border: 1px solid #30363d; border-radius: 6px; padding: 8px; font-size: 12px; max-height: 300px; overflow: auto; margin: 4px 0 0; }
 </style>
 </head>
 <body>
@@ -55,11 +60,12 @@
   </div>
 
   <details class="panel" id="dryPanel">
-    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽會命中哪些規則(不會真的觸發,也不跑 LLM)</summary>
+    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽命中/房間監聽/送出指令/專案健檢(靜態零成本);skill-dispatch 可再「實跑」確認 claude 收到什麼</summary>
     <div class="row" style="margin-top:12px"><label>訊息文字</label><input type="text" id="dry_text" placeholder="例如:幫我把背景改成紅色" /></div>
     <div class="row"><label>房間</label><select id="dry_room"></select></div>
-    <div class="bar"><button class="abtn primary" id="dryBtn">試跑</button><span class="hint">房間選「全部房間」時,有限定房間的規則會以「房間不符」呈現</span></div>
+    <div class="bar"><button class="abtn primary" id="dryBtn">試跑</button><span class="hint">房間選「全部房間」= 不限定房間,只看關鍵字/啟用(等於假設在該規則的目標房間內)</span></div>
     <div id="dryResult" style="margin-top:10px"></div>
+    <div id="probeResult" style="margin-top:6px"></div>
   </details>
 
   <div class="panel">
@@ -73,6 +79,11 @@
     <div class="row"><label>名稱</label><input type="text" id="f_name" placeholder="例如:改顏色" /></div>
     <div class="row"><label>關鍵字</label><input type="text" id="f_keywords" placeholder="逗號分隔,例如:改顏色, 背景" /></div>
     <div class="row"><label>任務 (task)</label><select id="f_task"></select></div>
+    <div class="row dispatchonly"><label>專案路徑</label><input type="text" id="f_project_path" placeholder="專案絕對路徑,例如 D:\GB\GBH5" /></div>
+    <div class="row dispatchonly"><label>指令 (command)</label><div>
+      <input type="text" id="f_command" placeholder="例如 /i18n {路徑} 或 啟動" />
+      <div class="hint">餵給該專案 skill 的指令;用 {欄位} 代入抽取值(需搭配下方「使用 LLM」+「抽取欄位」),無 {} 則為固定指令。</div>
+    </div></div>
     <div class="row"><label>啟用</label><div><input type="checkbox" id="f_enabled" checked /> <span class="hint">取消勾選 = 停用此規則(保留設定但不觸發)</span></div></div>
     <div class="row"><label>房間範圍</label><div>
       <div id="f_rooms"></div>
@@ -145,21 +156,118 @@ async function dryRun() {
 
 function renderDryResult(results) {
   const out = document.getElementById("dryResult");
+  document.getElementById("probeResult").innerHTML = ""; // 清掉上次實跑結果
   if (!results.length) { out.innerHTML = `<span class="muted">（尚無規則)</span>`; return; }
-  const rows = results.map((r) => {
+  const rows = results.map((r, i) => {
+    // 觸發判斷
     let verdict, cls;
     if (r.triggers) { verdict = "✅ 會觸發"; cls = "ok"; }
-    else if (r.needs_llm) { verdict = "🤖 關鍵字命中 → 會送 LLM 二次判斷(此處不實跑)"; cls = "llm"; }
+    else if (r.needs_llm) { verdict = "🤖 送 LLM 判斷"; cls = "llm"; }
     else {
       const reasons = [];
       if (!r.keyword_hit) reasons.push("關鍵字未命中");
-      if (!r.enabled) reasons.push("規則已停用");
+      if (!r.enabled) reasons.push("已停用");
       if (!r.room_ok) reasons.push("房間不符");
-      verdict = `⬜ 不觸發（${reasons.join("、") || "—"}）`; cls = "muted";
+      verdict = `❌ 不觸發（${reasons.join("、") || "—"}）`; cls = "muted";
     }
-    return `<tr><td>${esc(r.name)}</td><td class="muted">${esc(r.task)}</td><td class="${cls}">${verdict}</td></tr>`;
+    // 房間監聽狀態
+    const rm = r.room_monitor || { status: "none", detail: "" };
+    const rmCell = ({
+      ok: `<span class="ok" title="${esc(rm.detail)}">✅ 有效</span>`,
+      unseen: `<span class="llm" title="${esc(rm.detail)}">⚠️ 未看過</span>`,
+      unmonitored: `<span class="err" title="${esc(rm.detail)}">❌ 未監聽</span>`,
+      none: `<span class="muted">—</span>`,
+    })[rm.status] || `<span class="muted">—</span>`;
+    // 專案健檢(skill-dispatch)
+    let pcCell = `<span class="muted">—</span>`;
+    let pcHealthy = true;
+    if (r.project_check) {
+      const c = r.project_check;
+      if (c.clean) pcCell = `<span class="ok" title="${esc(c.detail)}">✅ 乾淨</span>`;
+      else if (c.exists && c.is_git) pcCell = `<span class="llm" title="${esc(c.detail)}">⚠️ 有改動</span>`;
+      else { pcCell = `<span class="err" title="${esc(c.detail)}">❌ ${esc(c.detail)}</span>`; pcHealthy = false; }
+    }
+    // 送出指令(固定=真實;帶佔位=模板,需實跑才有真實值)
+    let cmdCell = `<span class="muted">—</span>`;
+    if (r.command != null) {
+      cmdCell = r.has_placeholder
+        ? `<code>${esc(r.command)}</code> <span class="hint">帶參數,點實跑看真實值</span>`
+        : `<code>${esc(r.command)}</code>`;
+    }
+    // 實跑按鈕(僅 skill-dispatch;訊息不會觸發此規則或專案不健康時停用,避免白跑/白花 quota)
+    const wouldFire = r.triggers || r.needs_llm;
+    const probeDisabled = !wouldFire || !pcHealthy;
+    const probeTitle = !wouldFire ? "這則訊息不會觸發此規則" : (!pcHealthy ? "專案路徑不健康,無法實跑" : "");
+    const probeCell = r.task === "skill-dispatch"
+      ? `<button class="abtn" data-probe="${i}" data-rule="${esc(r.name)}" ${probeDisabled ? `disabled title="${esc(probeTitle)}"` : ""}>🔌 實跑</button>`
+      : `<span class="muted">—</span>`;
+    return `<tr><td>${esc(r.name)}</td><td class="${cls}">${verdict}</td><td>${rmCell}</td><td>${pcCell}</td><td>${cmdCell}</td><td>${probeCell}</td></tr>`;
   }).join("");
-  out.innerHTML = `<table><thead><tr><th>規則</th><th>任務</th><th>試跑結果</th></tr></thead><tbody>${rows}</tbody></table>`;
+  out.innerHTML = `<table><thead><tr><th>規則</th><th>觸發判斷</th><th>房間監聽</th><th>專案健檢</th><th>送出指令</th><th>實跑</th></tr></thead><tbody>${rows}</tbody></table>`;
+  out.querySelectorAll("[data-probe]").forEach((b) => b.addEventListener("click", () => doProbe(+b.dataset.probe, b.dataset.rule)));
+}
+
+// probeResult 面板:標題列右側 ▾ 收合鈕(只收起內容 .probe-body,保留標題,可再展開;不清空)。
+function toggleBtnHtml() { return `<button class="abtn" data-toggle-probe style="float:right;padding:2px 8px" title="收合/展開">▾</button>`; }
+function probePanel(titleHtml, bodyHtml) {
+  return `<div class="panel"><div class="probe-head">${toggleBtnHtml()}<b>${titleHtml}</b></div><div class="probe-body" style="margin-top:6px">${bodyHtml}</div></div>`;
+}
+function wireToggleBtn() {
+  const btn = document.querySelector("#probeResult [data-toggle-probe]");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const body = document.querySelector("#probeResult .probe-body");
+    if (!body) return;
+    const collapsed = body.style.display === "none";
+    body.style.display = collapsed ? "" : "none";
+    btn.textContent = collapsed ? "▾" : "▸";
+  });
+}
+
+// 實跑連通測試:對單條 skill-dispatch 規則,用試跑訊息跑 judge + 派 claude 唯讀探測(花一點 quota)。
+async function doProbe(index, ruleName) {
+  const body = document.getElementById("dry_text").value;
+  const out = document.getElementById("probeResult");
+  if (!body.trim()) { out.innerHTML = `<span class="err">請先在上方輸入訊息文字,再實跑。</span>`; return; }
+  out.innerHTML = probePanel(`🔌 實跑探測「${esc(ruleName)}」中…`, `<span class="muted">派 claude 進專案唯讀確認,約需數十秒,請稍候。</span>`);
+  wireToggleBtn();
+  try {
+    const res = await fetch("/api/rules/probe", { method: "POST", body: JSON.stringify({ index, body }) });
+    if (!res.ok) {
+      out.innerHTML = probePanel(`🔌 ${esc(ruleName)}`, `<span class="err">實跑失敗:${esc(await res.text())}</span>`);
+      wireToggleBtn();
+      return;
+    }
+    renderProbeResult(await res.json(), ruleName);
+  } catch (e) {
+    out.innerHTML = probePanel(`🔌 ${esc(ruleName)}`, `<span class="err">實跑失敗:${esc(e.message)}</span>`);
+    wireToggleBtn();
+  }
+}
+
+function renderProbeResult(d, ruleName) {
+  const out = document.getElementById("probeResult");
+  if (d.blocked) {
+    out.innerHTML = probePanel(`🔌 ${esc(ruleName)}`, `<span class="err">專案路徑不可用:${esc((d.project_check && d.project_check.detail) || "")},已跳過(不浪費 claude 呼叫)</span>`);
+    wireToggleBtn();
+    return;
+  }
+  if (d.error) {
+    out.innerHTML = probePanel(`🔌 ${esc(ruleName)}`, `<span class="err">探測出錯:${esc(d.error)}</span>`);
+    wireToggleBtn();
+    return;
+  }
+  const params = d.params || {};
+  const paramStr = Object.keys(params).length ? Object.entries(params).map(([k, v]) => `${esc(k)}=${esc(v)}`).join("、") : "(無)";
+  let body = `<div>LLM 判定:${d.trigger ? `<span class="ok">會觸發</span>` : `<span class="err">不觸發</span>`}　抽取參數:${esc(paramStr)}</div>`;
+  body += `<div style="margin-top:4px">實際送出指令:<code>${esc(d.rendered_command)}</code></div>`;
+  if (d.trigger && d.probe) {
+    body += `<div style="margin-top:6px" class="hint">專案(claude 唯讀)回報:</div><pre>${esc(d.probe.output)}</pre>`;
+  } else if (!d.trigger) {
+    body += `<div class="muted" style="margin-top:6px">LLM 判定不觸發,未派 claude 探測。</div>`;
+  }
+  out.innerHTML = probePanel(`🔌 實跑結果:${esc(ruleName)}`, body);
+  wireToggleBtn();
 }
 
 function renderList() {
@@ -218,6 +326,12 @@ function toggleLlm() {
   document.querySelectorAll(".llmonly").forEach((e) => e.style.display = on ? "" : "none");
 }
 
+// 專案路徑/指令欄位只在「通用任務 skill-dispatch」時顯示(其他內建任務用不到)。
+function toggleDispatch() {
+  const on = document.getElementById("f_task").value === "skill-dispatch";
+  document.querySelectorAll(".dispatchonly").forEach((e) => e.style.display = on ? "" : "none");
+}
+
 function openEdit(index) {
   editIndex = index;
   const r = index >= 0 ? rules[index] : { name: "", keywords: [], task: tasks[0] || "", use_llm: false };
@@ -227,8 +341,11 @@ function openEdit(index) {
   document.getElementById("f_use_llm").checked = !!r.use_llm;
   document.getElementById("f_intent").value = r.intent || "";
   document.getElementById("f_extract").value = (r.extract || []).join(", ");
+  document.getElementById("f_project_path").value = r.project_path || "";
+  document.getElementById("f_command").value = r.command || "";
   fillSelects(r);
   toggleLlm();
+  toggleDispatch();
   document.getElementById("formErr").textContent = "";
   document.getElementById("editPanel").style.display = "";
 }
@@ -244,12 +361,18 @@ async function applyEdit() {
   const roomsSel = [...document.querySelectorAll("#f_rooms input:checked")].map((c) => c.value);
   const intent = document.getElementById("f_intent").value.trim();
   const extract = splitCsv(document.getElementById("f_extract").value);
+  const project_path = document.getElementById("f_project_path").value.trim();
+  const command = document.getElementById("f_command").value.trim();
 
   const err = (m) => { document.getElementById("formErr").textContent = m; };
   if (!name) return err("名稱必填");
   if (!keywords.length) return err("關鍵字至少一個");
   if (!task) return err("請選擇任務");
   if (use_llm && !intent) return err("使用 LLM 時,觸發意圖(intent)必填");
+  if (task === "skill-dispatch") {
+    if (!project_path) return err("skill-dispatch 需要填「專案路徑」");
+    if (!command) return err("skill-dispatch 需要填「指令 (command)」");
+  }
   if (enabled && !roomsSel.length) return err("啟用中的規則必須至少勾選一個房間;或取消勾選「啟用」");
 
   const rule = { name, keywords, task, use_llm };
@@ -257,6 +380,8 @@ async function applyEdit() {
   if (roomsSel.length) rule.rooms = roomsSel;       // 留空 = 不觸發(僅停用規則允許)
   if (use_llm) { rule.intent = intent; if (extract.length) rule.extract = extract; }
   else if (extract.length) rule.extract = extract;
+  if (project_path) rule.project_path = project_path; // skill-dispatch 用:專案絕對路徑
+  if (command) rule.command = command;                // skill-dispatch 用:餵給 skill 的指令
 
   const next = [...rules];
   if (editIndex >= 0) next[editIndex] = rule; else next.push(rule);
@@ -304,6 +429,7 @@ document.getElementById("saveBtn").addEventListener("click", saveAll);
 document.getElementById("applyBtn").addEventListener("click", applyEdit);
 document.getElementById("cancelBtn").addEventListener("click", closeEdit);
 document.getElementById("f_use_llm").addEventListener("change", toggleLlm);
+document.getElementById("f_task").addEventListener("change", toggleDispatch);
 document.getElementById("dryBtn").addEventListener("click", dryRun);
 document.getElementById("dry_text").addEventListener("keydown", (e) => { if (e.key === "Enter") dryRun(); });
 

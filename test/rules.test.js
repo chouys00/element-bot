@@ -38,6 +38,14 @@ ok("rooms 省略通過", validateRule(good, 0) === true);
 throws("rooms 非字串陣列被拒", () => validateRule({ ...good, rooms: [1] }, 0));
 throws("rooms 含空字串被拒", () => validateRule({ ...good, rooms: ["ok", ""] }, 0));
 
+// project_path / command:通用任務 skill-dispatch 用。選填,提供則須為非空字串。
+ok("project_path 字串通過", validateRule({ ...good, project_path: "D:\\GB\\GBH5" }, 0) === true);
+ok("command 字串通過", validateRule({ ...good, command: "/i18n {路徑}" }, 0) === true);
+ok("project_path/command 省略通過", validateRule(good, 0) === true);
+throws("project_path 空字串被拒", () => validateRule({ ...good, project_path: "" }, 0));
+throws("command 空字串被拒", () => validateRule({ ...good, command: "" }, 0));
+throws("project_path 非字串被拒", () => validateRule({ ...good, project_path: 123 }, 0));
+
 const tmp = path.join(os.tmpdir(), `rules-test-${Date.now()}.json`);
 fs.writeFileSync(tmp, JSON.stringify([good]), "utf8");
 const loaded = loadRules(tmp);
