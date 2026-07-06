@@ -16,6 +16,8 @@
   th { color: #9aa; font-weight: 600; }
   .abtn { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; text-decoration: none; }
   .abtn:hover { border-color: #58a6ff; color: #79b8ff; }
+  .abtn:disabled { opacity: .4; cursor: not-allowed; }
+  .abtn:disabled:hover { border-color: #30363d; color: #c9d1d9; }
   .abtn.primary { background: #1f6feb; color: #fff; border-color: #1f6feb; }
   .abtn.primary:hover { background: #388bfd; color: #fff; }
   .abtn.danger:hover { border-color: #ef4444; color: #ff9d96; }
@@ -176,6 +178,15 @@ function renderDryResult(results) {
       unmonitored: `<span class="err" title="${esc(rm.detail)}">❌ 未監聽</span>`,
       none: `<span class="muted">—</span>`,
     })[rm.status] || `<span class="muted">—</span>`;
+    // 專案健檢(skill-dispatch)
+    let pcCell = `<span class="muted">—</span>`;
+    let pcHealthy = true;
+    if (r.project_check) {
+      const c = r.project_check;
+      if (c.clean) pcCell = `<span class="ok" title="${esc(c.detail)}">✅ 乾淨</span>`;
+      else if (c.exists && c.is_git) pcCell = `<span class="llm" title="${esc(c.detail)}">⚠️ 有改動</span>`;
+      else { pcCell = `<span class="err" title="${esc(c.detail)}">❌ ${esc(c.detail)}</span>`; pcHealthy = false; }
+    }
     // 送出指令(固定=真實;帶佔位=模板,需實跑才有真實值)
     let cmdCell = `<span class="muted">—</span>`;
     if (r.command != null) {
@@ -183,21 +194,16 @@ function renderDryResult(results) {
         ? `<code>${esc(r.command)}</code> <span class="hint">帶參數,點實跑看真實值</span>`
         : `<code>${esc(r.command)}</code>`;
     }
-    // 專案健檢(skill-dispatch)
-    let pcCell = `<span class="muted">—</span>`;
-    if (r.project_check) {
-      const c = r.project_check;
-      if (c.clean) pcCell = `<span class="ok" title="${esc(c.detail)}">✅ 乾淨</span>`;
-      else if (c.exists && c.is_git) pcCell = `<span class="llm" title="${esc(c.detail)}">⚠️ 有改動</span>`;
-      else pcCell = `<span class="err" title="${esc(c.detail)}">❌ ${esc(c.detail)}</span>`;
-    }
-    // 實跑按鈕(僅 skill-dispatch)
+    // 實跑按鈕(僅 skill-dispatch;訊息不會觸發此規則或專案不健康時停用,避免白跑/白花 quota)
+    const wouldFire = r.triggers || r.needs_llm;
+    const probeDisabled = !wouldFire || !pcHealthy;
+    const probeTitle = !wouldFire ? "這則訊息不會觸發此規則" : (!pcHealthy ? "專案路徑不健康,無法實跑" : "");
     const probeCell = r.task === "skill-dispatch"
-      ? `<button class="abtn" data-probe="${i}" data-rule="${esc(r.name)}">🔌 實跑</button>`
+      ? `<button class="abtn" data-probe="${i}" data-rule="${esc(r.name)}" ${probeDisabled ? `disabled title="${esc(probeTitle)}"` : ""}>🔌 實跑</button>`
       : `<span class="muted">—</span>`;
-    return `<tr><td>${esc(r.name)}</td><td class="${cls}">${verdict}</td><td>${rmCell}</td><td>${cmdCell}</td><td>${pcCell}</td><td>${probeCell}</td></tr>`;
+    return `<tr><td>${esc(r.name)}</td><td class="${cls}">${verdict}</td><td>${rmCell}</td><td>${pcCell}</td><td>${cmdCell}</td><td>${probeCell}</td></tr>`;
   }).join("");
-  out.innerHTML = `<table><thead><tr><th>規則</th><th>觸發判斷</th><th>房間監聽</th><th>送出指令</th><th>專案健檢</th><th>實跑</th></tr></thead><tbody>${rows}</tbody></table>`;
+  out.innerHTML = `<table><thead><tr><th>規則</th><th>觸發判斷</th><th>房間監聽</th><th>專案健檢</th><th>送出指令</th><th>實跑</th></tr></thead><tbody>${rows}</tbody></table>`;
   out.querySelectorAll("[data-probe]").forEach((b) => b.addEventListener("click", () => doProbe(+b.dataset.probe, b.dataset.rule)));
 }
 

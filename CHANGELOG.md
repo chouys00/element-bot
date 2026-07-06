@@ -20,6 +20,8 @@
   - skill-dispatch 規則可按「🔌 實跑」做**按需連通測試**:跑一次 LLM 抽參填出真實指令,並派 claude **唯讀**進專案回報「我在哪、收到什麼指令、會用哪個 skill」,但不執行、不改檔、不 commit。
   - 新增 [projectCheck.js](src/projectCheck.js)(路徑健檢,回報而非丟錯)、[probe.js](src/probe.js)(judge 抽參 + claude 唯讀探測,用非阻塞 `spawn` 避免凍住 dashboard)。
   - `trigger.js` 的 `dryRunRules` 帶出 command/佔位/專案路徑;新增 `POST /api/rules/probe`(單條實跑,路徑不健康先擋、不浪費 claude 呼叫)。
+  - 試跑結果欄位順序調整為「規則/觸發判斷/房間監聽/**專案健檢**/**送出指令**/實跑」,讓「送出指令(模板)」緊鄰「實跑」(真實值),閱讀順序對齊管線。
+  - 「實跑」按鈕在**這則訊息不會觸發此規則**或**專案路徑不健康**時停用(灰底 + 滑過顯示原因),避免白跑浪費 quota;仍會觸發或待送 LLM 判斷、僅房間未監聽時維持可按。
 
 ### 已知限制
 - 「實跑」會讓 dashboard 程序 spawn 無人 claude(`--dangerously-skip-permissions`);本機(127.0.0.1)用可接受,**開放遠端前必須先加登入驗證**(既有待辦,此功能讓它更重要)。
