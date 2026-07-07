@@ -31,7 +31,12 @@ function getCommandLine(pid) {
       );
       return out.trim() || null;
     }
-    return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim() || null;
+    if (process.platform === "linux") {
+      return fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim() || null;
+    }
+    // macOS(及其他 BSD 系)沒有 /proc,改用 ps 查命令列。
+    const out = execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 3000 });
+    return out.trim() || null;
   } catch (_) {
     return null;
   }
