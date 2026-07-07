@@ -41,7 +41,8 @@ function waitForPrepared(client) {
 
 async function main() {
   const config = loadConfig();
-  acquireLock();
+  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
+  acquireLock(STORAGE_DIR);
 
   console.log("[element-bot] 登入新裝置中...");
   const session = await loginNewDevice(config);
@@ -52,8 +53,6 @@ async function main() {
     session,
     recoveryKey: config.recoveryKey,
   });
-
-  const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
 
   // 監聽房間清單(可熱載入):優先讀 storage/rooms-config.json(dashboard 可編輯),
   // 檔不存在時退回 .env 的 MATRIX_ROOM_IDS(config.roomIds)。以 let 讓 fs.watch 熱換。
