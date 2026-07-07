@@ -10,6 +10,7 @@ const { loadRules, saveRules } = require("../rules");
 const { dryRunRules } = require("../trigger");
 const { projectCheck } = require("../projectCheck");
 const { probeRule } = require("../probe");
+const { judge } = require("../judge");
 const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 
@@ -54,9 +55,10 @@ function readBody(req, limit = 1024 * 1024) {
 
 const CONTENT_TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
 
-// deps = { queueDir, storageDir, outputFile, rulesPath, envRoomIds }
+// deps = { queueDir, storageDir, outputFile, rulesPath, envRoomIds, judgeFn }
+// judgeFn 可注入以利測試(預設用真 judge,會呼叫 claude CLI)。
 function createServer(deps) {
-  const { queueDir, storageDir, outputFile, rulesPath, envRoomIds = [] } = deps;
+  const { queueDir, storageDir, outputFile, rulesPath, envRoomIds = [], judgeFn = (r, b) => judge(r, b) } = deps;
   return http.createServer(async (req, res) => {
     const p = new URL(req.url, "http://localhost").pathname;
     try {
@@ -79,6 +81,27 @@ function createServer(deps) {
             project_check: r.task === "skill-dispatch" ? projectCheck(r.project_path) : null,
           }));
           return sendJson(res, 200, { results });
+        }
+        // LLM 二次判斷(單條規則):只跑 judge 抽參,不進專案探測。試跑後前端對「過閘的 use_llm 規則」逐條背景呼叫,
+        // 把真實觸發結果 + 抽取參數漸進填回試跑表(關鍵字免費即時、LLM 判斷按需小額)。比實跑便宜(不讀專案、不派 claude 進目錄)。
+        if (p === "/api/rules/judge") {
+          let raw;
+          try { raw = await readBody(req); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+          let parsed;
+          try { parsed = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          const body = typeof parsed.body === "string" ? parsed.body : "";
+          const index = Number.isInteger(parsed.index) ? parsed.index : -1;
+          let rules = [];
+          try { rules = loadRules(rulesPath); } catch (_) {}
+          const rule = rules[index];
+          if (!rule) { res.writeHead(404); return res.end("no such rule"); }
+          if (!rule.use_llm) return sendJson(res, 200, { skipped: true }); // 非 LLM 規則不需二次判斷
+          try {
+            const result = await judgeFn(rule, body);
+            return sendJson(res, 200, { trigger: !!(result && result.trigger === true), params: (result && result.params) || {} });
+          } catch (e) {
+            return sendJson(res, 200, { error: String((e && e.message) || e) });
+          }
         }
         // 實跑連通測試(單條 skill-dispatch 規則):judge 抽參 → 填指令 → 派 claude 唯讀探測。
         // 會花一點 quota,故單條、按需。路徑不健康(不存在/非 git)先擋,不浪費 claude 呼叫。

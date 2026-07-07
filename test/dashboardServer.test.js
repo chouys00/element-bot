@@ -25,7 +25,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const rulesPath = path.join(root, "rules.json");
   fs.writeFileSync(rulesPath, JSON.stringify([{ name: "改顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]), "utf8");
 
-  const server = createServer({ queueDir, storageDir, outputFile, rulesPath, envRoomIds: ["!env:s"] });
+  // 假 judge:body 含「觸發」→ trigger true 並抽出固定連結,否則 trigger false。供 /api/rules/judge 測試,不打真 claude。
+  const fakeJudge = async (_rule, body) => ({ trigger: String(body).includes("觸發"), params: { 連結: "https://example.com/x" } });
+  const server = createServer({ queueDir, storageDir, outputFile, rulesPath, envRoomIds: ["!env:s"], judgeFn: fakeJudge });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
@@ -125,6 +127,30 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 
   const dryBad = await fetch(`${base}/api/rules/dry-run`, { method: "POST", body: "{not json" });
   ok("dry-run 壞 JSON 回 400", dryBad.status === 400);
+
+  // POST /api/rules/judge:只跑 LLM 二次判斷(注入假 judge),回傳 trigger + 抽取 params。dry-run 之後前端逐條背景呼叫用。
+  await fetch(`${base}/api/rules`, {
+    method: "PUT",
+    body: JSON.stringify([
+      { name: "LLM規則", keywords: ["x"], task: "demo-skill", use_llm: true, intent: "測試意圖", extract: ["連結"], rooms: ["!r:s"] },
+      { name: "非LLM規則", keywords: ["y"], task: "demo-skill", use_llm: false, rooms: ["!r:s"] },
+    ]),
+  });
+  const jTrig = await (await fetch(`${base}/api/rules/judge`, { method: "POST", body: JSON.stringify({ index: 0, body: "請觸發這則" }) })).json();
+  ok("judge use_llm 規則 → trigger true", jTrig.trigger === true);
+  ok("judge 回抽取參數", jTrig.params && jTrig.params["連結"] === "https://example.com/x");
+
+  const jNo = await (await fetch(`${base}/api/rules/judge`, { method: "POST", body: JSON.stringify({ index: 0, body: "普通訊息" }) })).json();
+  ok("judge 不含觸發字 → trigger false", jNo.trigger === false);
+
+  const jSkip = await (await fetch(`${base}/api/rules/judge`, { method: "POST", body: JSON.stringify({ index: 1, body: "y" }) })).json();
+  ok("judge 非 use_llm 規則 → skipped", jSkip.skipped === true);
+
+  const jNF = await fetch(`${base}/api/rules/judge`, { method: "POST", body: JSON.stringify({ index: 99, body: "x" }) });
+  ok("judge 無此規則 → 404", jNF.status === 404);
+
+  const jBad = await fetch(`${base}/api/rules/judge`, { method: "POST", body: "{not json" });
+  ok("judge 壞 JSON → 400", jBad.status === 400);
 
   // GET /api/notify-config → 預設(停用)+ 房間清單
   const nc0 = await (await fetch(`${base}/api/notify-config`)).json();

@@ -65,7 +65,7 @@
   </div>
 
   <details class="panel" id="dryPanel">
-    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽命中/房間監聽/送出指令/專案健檢(靜態零成本);skill-dispatch 可再「實跑」確認 claude 收到什麼</summary>
+    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽關鍵字/房間/專案健檢(免費即時);use_llm 規則會自動跑 LLM 二次判斷(小額 quota)顯示真實觸發結果;skill-dispatch 可再「實跑」派 claude 進專案確認</summary>
     <div class="row" style="margin-top:12px"><label>訊息文字</label><input type="text" id="dry_text" placeholder="例如:幫我把背景改成紅色" /></div>
     <div class="row"><label>房間</label><select id="dry_room"></select></div>
     <div class="bar"><button class="abtn primary" id="dryBtn">試跑</button><span class="hint">房間選「全部房間」= 不限定房間,只看關鍵字/啟用(等於假設在該規則的目標房間內)</span></div>
@@ -111,6 +111,7 @@ let rooms = {};        // room_id -> 房名(供標籤顯示)
 let monitorRooms = []; // 監聽清單(規則房間 checkbox 的來源)
 let tasks = [];        // 可用 task 名稱
 let editIndex = -1;    // 正在編輯的規則索引;-1 = 新增
+let dryRunToken = 0;   // 每次試跑遞增;背景 LLM 判斷回填前比對,過期的(使用者已重跑/換訊息)就作廢不回填
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function splitCsv(s) { return String(s || "").split(",").map((x) => x.trim()).filter(Boolean); }
@@ -148,6 +149,7 @@ async function dryRun() {
   const room_id = document.getElementById("dry_room").value;
   const out = document.getElementById("dryResult");
   if (!body.trim()) { out.innerHTML = `<span class="muted">請先輸入訊息文字。</span>`; return; }
+  dryRunToken++; // 使先前尚未回填的背景 LLM 判斷作廢
   out.innerHTML = `<span class="muted">試跑中…</span>`;
   try {
     const res = await fetch("/api/rules/dry-run", { method: "POST", body: JSON.stringify({ body, room_id: room_id || undefined }) });
@@ -164,10 +166,12 @@ function renderDryResult(results) {
   document.getElementById("probeResult").innerHTML = ""; // 清掉上次實跑結果
   if (!results.length) { out.innerHTML = `<span class="muted">（尚無規則)</span>`; return; }
   const rows = results.map((r, i) => {
-    // 觸發判斷
+    // 觸發判斷。needs_llm 的規則先顯示「關鍵字過閘 + LLM 判斷中…」,稍後由背景 judge 呼叫原地換成真實結果。
     let verdict, cls;
     if (r.triggers) { verdict = "✅ 會觸發"; cls = "ok"; }
-    else if (r.needs_llm) { verdict = "🤖 送 LLM 判斷"; cls = "llm"; }
+    else if (r.needs_llm) {
+      verdict = `🔑 關鍵字/房間/啟用:通過<br><span class="llm">🤖 LLM 判斷中…⏳</span>`; cls = "";
+    }
     else {
       const reasons = [];
       if (!r.keyword_hit) reasons.push("關鍵字未命中");
@@ -183,14 +187,20 @@ function renderDryResult(results) {
       unmonitored: `<span class="err" title="${esc(rm.detail)}">❌ 未監聽</span>`,
       none: `<span class="muted">—</span>`,
     })[rm.status] || `<span class="muted">—</span>`;
-    // 專案健檢(skill-dispatch)
+    // 專案健檢(skill-dispatch):projectCheck 實際查三件事(路徑存在/是否 git 倉庫/git 是否乾淨),
+    // title 逐項列出,不只顯示彙總後的單一狀態文字。
     let pcCell = `<span class="muted">—</span>`;
     let pcHealthy = true;
     if (r.project_check) {
       const c = r.project_check;
-      if (c.clean) pcCell = `<span class="ok" title="${esc(c.detail)}">✅ 乾淨</span>`;
-      else if (c.exists && c.is_git) pcCell = `<span class="llm" title="${esc(c.detail)}">⚠️ 有改動</span>`;
-      else { pcCell = `<span class="err" title="${esc(c.detail)}">❌ ${esc(c.detail)}</span>`; pcHealthy = false; }
+      const detail = [
+        `路徑存在:${c.exists ? "✅ 是" : "❌ 否"}`,
+        `git 倉庫:${c.is_git ? "✅ 是" : "❌ 否"}`,
+        `無未提交改動:${c.clean ? "✅ 是" : "❌ 否"}`,
+      ].join("\n");
+      if (c.clean) pcCell = `<span class="ok" title="${esc(detail)}">✅ 乾淨</span>`;
+      else if (c.exists && c.is_git) pcCell = `<span class="llm" title="${esc(detail)}">⚠️ 有改動</span>`;
+      else { pcCell = `<span class="err" title="${esc(detail)}">❌ ${esc(c.detail)}</span>`; pcHealthy = false; }
     }
     // 送出指令(固定=真實;帶佔位=模板,需實跑才有真實值)
     let cmdCell = `<span class="muted">—</span>`;
@@ -199,17 +209,51 @@ function renderDryResult(results) {
         ? `<code>${esc(r.command)}</code> <span class="hint">帶參數,點實跑看真實值</span>`
         : `<code>${esc(r.command)}</code>`;
     }
-    // 實跑按鈕(僅 skill-dispatch;訊息不會觸發此規則或專案不健康時停用,避免白跑/白花 quota)
+    // 實跑按鈕(僅 skill-dispatch;訊息不會觸發此規則或專案不健康時停用,避免白跑/白花 quota)。
+    // 成本標明在 title:實跑會派 claude 真的進專案讀 .claude/skills、理解專案結構(跟真執行的「讀懂」那段一樣貴,
+    // 只省「動手做+verify」),不是 judge 那種單輪小額分類,故按需、不隨試跑自動觸發。
     const wouldFire = r.triggers || r.needs_llm;
     const probeDisabled = !wouldFire || !pcHealthy;
-    const probeTitle = !wouldFire ? "這則訊息不會觸發此規則" : (!pcHealthy ? "專案路徑不健康,無法實跑" : "");
+    const probeTitle = !wouldFire ? "這則訊息不會觸發此規則" : (!pcHealthy ? "專案路徑不健康,無法實跑" : "派 claude 進專案唯讀確認,約需數十秒,quota 消耗中等(等同讀懂專案,比真執行省的只是「動手做+verify」那段)");
     const probeCell = r.task === "skill-dispatch"
-      ? `<button class="abtn" data-probe="${i}" data-rule="${esc(r.name)}" ${probeDisabled ? `disabled title="${esc(probeTitle)}"` : ""}>🔌 實跑</button>`
+      ? `<button class="abtn" data-probe="${i}" data-rule="${esc(r.name)}" title="${esc(probeTitle)}" ${probeDisabled ? "disabled" : ""}>🔌 實跑(中量 quota)</button>`
       : `<span class="muted">—</span>`;
-    return `<tr><td>${esc(r.name)}</td><td class="${cls}">${verdict}</td><td>${rmCell}</td><td>${pcCell}</td><td>${cmdCell}</td><td>${probeCell}</td></tr>`;
+    return `<tr><td>${esc(r.name)}</td><td class="${cls}" id="verdict-${i}">${verdict}</td><td>${rmCell}</td><td>${pcCell}</td><td>${cmdCell}</td><td>${probeCell}</td></tr>`;
   }).join("");
   out.innerHTML = `<table><thead><tr><th>規則</th><th>觸發判斷</th><th>房間監聽</th><th>專案健檢</th><th>送出指令</th><th>實跑</th></tr></thead><tbody>${rows}</tbody></table>`;
   out.querySelectorAll("[data-probe]").forEach((b) => b.addEventListener("click", () => doProbe(+b.dataset.probe, b.dataset.rule)));
+  // 漸進式:對過閘的 use_llm 規則,背景各打一次 judge(小額 quota),回來把「LLM 判斷中…」原地換成真實觸發結果。
+  results.forEach((r, i) => { if (r.needs_llm) fillLlmVerdict(i, r); });
+}
+
+// 背景呼叫 /api/rules/judge,把第 i 列「觸發判斷」欄的「判斷中…」換成真實結果。
+// 綁定當次試跑的訊息文字;若使用者已改文字或重跑(dryRunToken 變動),舊結果作廢不回填,避免張冠李戴。
+async function fillLlmVerdict(index, r) {
+  const body = document.getElementById("dry_text").value;
+  const token = dryRunToken;
+  const kwLine = "🔑 關鍵字/房間/啟用:通過";
+  const set = (html, cls) => {
+    if (token !== dryRunToken) return;            // 已重跑/換訊息:放棄回填
+    const cell = document.getElementById(`verdict-${index}`);
+    if (!cell) return;
+    cell.className = cls;
+    cell.innerHTML = `${kwLine}<br>${html}`;
+  };
+  try {
+    const res = await fetch("/api/rules/judge", { method: "POST", body: JSON.stringify({ index, body }) });
+    if (!res.ok) { set(`<span class="err">🤖 LLM 判斷失敗（${esc(await res.text())}）</span>`, ""); return; }
+    const d = await res.json();
+    if (d.error) { set(`<span class="err">🤖 LLM 判斷出錯（${esc(d.error)}）</span>`, ""); return; }
+    if (d.trigger) {
+      const params = d.params || {};
+      const ps = Object.keys(params).length ? "（" + Object.entries(params).map(([k, v]) => `${esc(k)}=${esc(v)}`).join("、") + "）" : "";
+      set(`<span class="ok">✅ LLM 判斷:觸發${ps}</span>`, "");
+    } else {
+      set(`<span class="err">❌ LLM 判斷:不觸發</span>`, "");
+    }
+  } catch (e) {
+    set(`<span class="err">🤖 LLM 判斷失敗（${esc(e.message)}）</span>`, "");
+  }
 }
 
 // probeResult 面板:標題列右側 ▾ 收合鈕(只收起內容 .probe-body,保留標題,可再展開;不清空)。
