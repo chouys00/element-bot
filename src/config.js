@@ -41,6 +41,8 @@ function loadDashboardConfig() {
     outputFile: path.resolve(__dirname, "..", "output", "messages.jsonl"),
     rulesPath: path.resolve(__dirname, "..", process.env.RULES_PATH || "config/rules.json"),
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || "3000", 10),
+    // 預設僅本機;要讓其他電腦連線,.env 設 DASHBOARD_HOST=0.0.0.0(或該機器區網 IP)。
+    dashboardHost: process.env.DASHBOARD_HOST || "127.0.0.1",
     // 監聽清單後備:rooms-config.json 不存在時,dashboard 顯示 .env 的初始監聽房間。
     envRoomIds: parseRoomIds(process.env.MATRIX_ROOM_IDS),
   };

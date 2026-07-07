@@ -10,6 +10,6 @@ const server = createServer({
   rulesPath: config.rulesPath,
   envRoomIds: config.envRoomIds,
 });
-server.listen(config.dashboardPort, "127.0.0.1", () => {
-  console.log(`[dashboard] 監控台已啟動 → http://127.0.0.1:${config.dashboardPort}`);
+server.listen(config.dashboardPort, config.dashboardHost, () => {
+  console.log(`[dashboard] 監控台已啟動 → http://${config.dashboardHost}:${config.dashboardPort}`);
 });
