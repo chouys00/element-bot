@@ -1,6 +1,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const { ensureDir } = require("./fsUtils");
 const { readState } = require("./executors/checkpoint");
 
 // 崩潰重試保險:一個任務被回收重跑的最大嘗試次數。超過即放棄自動重試、送 failed/。
@@ -31,27 +32,27 @@ async function processOne(filePath, deps) {
   try {
     task = JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch (err) {
-    fs.mkdirSync(failedDir, { recursive: true });
+    ensureDir(failedDir);
     fs.renameSync(filePath, path.join(failedDir, base));
     logger.error(`[worker] ${base} 解析失敗 → failed/:`, err.message);
     return "failed";
   }
 
   // 開始執行前先移到 processing/:儀表板可顯示「進行中」,且 pollOnce 只掃 pending/ 故不會重入。
-  fs.mkdirSync(processingDir, { recursive: true });
+  ensureDir(processingDir);
   const processingPath = path.join(processingDir, base);
   fs.renameSync(filePath, processingPath);
 
   const id = base.replace(/\.json$/, "");
   try {
     await executor(task, { logger, queueDir, id });
-    fs.mkdirSync(doneDir, { recursive: true });
+    ensureDir(doneDir);
     fs.renameSync(processingPath, path.join(doneDir, base));
     logger.log(`[worker] ${base} 完成 → done/`);
     await safeNotify(deps, { queueDir, id, status: "done", task });
     return "done";
   } catch (err) {
-    fs.mkdirSync(failedDir, { recursive: true });
+    ensureDir(failedDir);
     const dest = path.join(failedDir, base);
     fs.renameSync(processingPath, dest);
     fs.writeFileSync(dest + ".error.txt", String((err && err.stack) || err), "utf8");
@@ -93,14 +94,14 @@ function recoverProcessing(queueDir, logger, maxAttempts = DEFAULT_MAX_ATTEMPTS)
     const state = readState(path.join(queueDir, "work", id));
     const attempt = (state && state.attempt) || 0;
     if (attempt >= maxAttempts) {
-      fs.mkdirSync(failedDir, { recursive: true });
+      ensureDir(failedDir);
       const dest = path.join(failedDir, f);
       fs.renameSync(path.join(processingDir, f), dest);
       fs.writeFileSync(dest + ".error.txt", `崩潰重試保險:已嘗試 ${attempt} 次仍未完成(每次都中斷),放棄自動重試,移入 failed/ 待人工處理。`, "utf8");
       logger.error(`[worker] ${f} 已嘗試 ${attempt} 次仍中斷 → failed/(放棄自動重試,上限 ${maxAttempts})`);
       continue;
     }
-    fs.mkdirSync(pendingDir, { recursive: true });
+    ensureDir(pendingDir);
     fs.renameSync(path.join(processingDir, f), path.join(pendingDir, f));
     logger.log(`[worker] 回收中斷任務 ${f}(已嘗試 ${attempt} 次) → pending/(將從斷點續跑)`);
     recovered++;

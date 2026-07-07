@@ -1,6 +1,6 @@
 "use strict";
-const fs = require("fs");
 const path = require("path");
+const { readJsonSafe, writeJsonAtomic } = require("./fsUtils");
 
 // 任務通知設定:存於 storage/notify-config.json。bot 每次發送前現讀,故 dashboard 改設定免重啟 bot。
 //   enabled    是否啟用通知
@@ -14,13 +14,9 @@ function configPath(storageDir) {
 
 // 讀設定;檔不存在/壞掉 → 回預設(通知停用),不丟錯。
 function readNotifyConfig(storageDir) {
-  try {
-    const raw = JSON.parse(fs.readFileSync(configPath(storageDir), "utf8"));
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...DEFAULTS };
-    return { ...DEFAULTS, ...raw };
-  } catch (_) {
-    return { ...DEFAULTS };
-  }
+  const raw = readJsonSafe(configPath(storageDir), null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...DEFAULTS };
+  return { ...DEFAULTS, ...raw };
 }
 
 // 驗證設定;非法丟 Error(供 PUT endpoint 擋下壞資料、不覆寫原檔)。
@@ -38,13 +34,9 @@ function validateNotifyConfig(cfg) {
 // 驗證後原子寫入(只保留已知欄位)。回傳落地後的完整設定。
 function writeNotifyConfig(storageDir, cfg) {
   validateNotifyConfig(cfg);
-  fs.mkdirSync(storageDir, { recursive: true });
   const merged = { ...DEFAULTS, ...cfg };
   const clean = { enabled: merged.enabled, room_id: merged.room_id, notify_on: merged.notify_on };
-  const tmp = configPath(storageDir) + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(clean, null, 2), "utf8");
-  fs.renameSync(tmp, configPath(storageDir));
-  return clean;
+  return writeJsonAtomic(configPath(storageDir), clean);
 }
 
 module.exports = { readNotifyConfig, writeNotifyConfig, validateNotifyConfig, DEFAULTS };

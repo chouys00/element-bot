@@ -49,6 +49,20 @@
 - 目前只保證 `m.text` 類文字內容適合直接分析;媒體類(`m.image` 等)的 `body` 只是檔名,沒有實際內容。
 - 檔案會持續增長且 append-only;若要做串流處理,可只讀取新增的尾段(記住上次讀到的行數 / 位元組位移)。
 
+## 相關檔案(v1.5+)
+
+除了 `output/messages.jsonl`,系統還維護以下檔案(消費訊息資料時通常不需要,但除錯/整合時有用):
+
+| 檔案 | 說明 |
+|------|------|
+| `config/rules.json` | 觸發規則(關鍵字 → 任務)。由 dashboard 編輯、bot 熱載入。規則**不再**存於 `.env` |
+| `storage/rooms-config.json` | 監聽房間清單(權威來源)。`.env` 的 `MATRIX_ROOM_IDS` 只在此檔不存在時作後備 |
+| `storage/notify-config.json` | 任務完成通知設定(是否通知、發到哪個房間) |
+| `storage/rooms.json` | room_id → 房間名稱對照(bot 自動維護,供 dashboard 顯示) |
+| `queue/` | 任務佇列(pending/processing/done/failed)與任務執行 log |
+
+dashboard(`npm run dashboard`)提供任務監控、規則編輯與試跑介面。
+
 ## 不在範圍內
 
 - 不含加密媒體的實際內容(只有檔名)。
