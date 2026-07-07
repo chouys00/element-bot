@@ -1,6 +1,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const { readJsonSafe, writeJsonAtomic } = require("./fsUtils");
 
 // 監聽房間清單:存於 storage/rooms-config.json,決定 bot 要擷取/觸發哪些房間。
 //   room_ids   要監聽的房間 id 陣列(權威清單;rule.rooms 只能從中挑子集)
@@ -27,15 +28,11 @@ function normalizeIds(ids) {
 
 // 讀設定;檔不存在/壞掉 → 回預設(空清單),不丟錯。
 function readRoomsConfig(storageDir) {
-  try {
-    const raw = JSON.parse(fs.readFileSync(configPath(storageDir), "utf8"));
-    if (!raw || typeof raw !== "object" || Array.isArray(raw) || !Array.isArray(raw.room_ids)) {
-      return { ...DEFAULTS };
-    }
-    return { room_ids: normalizeIds(raw.room_ids) };
-  } catch (_) {
+  const raw = readJsonSafe(configPath(storageDir), null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !Array.isArray(raw.room_ids)) {
     return { ...DEFAULTS };
   }
+  return { room_ids: normalizeIds(raw.room_ids) };
 }
 
 // 驗證設定;非法丟 Error(供 PUT endpoint 擋下壞資料、不覆寫原檔)。空清單為合法。
@@ -49,27 +46,18 @@ function validateRoomsConfig(cfg) {
 // 驗證後原子寫入(只保留已知欄位,room_ids 正規化)。回傳落地後的完整設定。
 function writeRoomsConfig(storageDir, cfg) {
   validateRoomsConfig(cfg);
-  fs.mkdirSync(storageDir, { recursive: true });
   const clean = { room_ids: normalizeIds(cfg.room_ids) };
-  const tmp = configPath(storageDir) + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(clean, null, 2), "utf8");
-  fs.renameSync(tmp, configPath(storageDir));
-  return clean;
+  return writeJsonAtomic(configPath(storageDir), clean);
 }
 
 // 決定 bot 啟動時的監聽清單:rooms-config.json 存在且可解析 → 用檔(含刻意清空的空清單);
 // 檔不存在或壞掉 → 回退 fallbackIds(來自 .env 的 MATRIX_ROOM_IDS)。
 function resolveRoomIds(storageDir, fallbackIds = []) {
-  try {
-    if (!fs.existsSync(configPath(storageDir))) return [...fallbackIds];
-    const raw = JSON.parse(fs.readFileSync(configPath(storageDir), "utf8"));
-    if (!raw || typeof raw !== "object" || Array.isArray(raw) || !Array.isArray(raw.room_ids)) {
-      return [...fallbackIds];
-    }
-    return normalizeIds(raw.room_ids);
-  } catch (_) {
+  const raw = readJsonSafe(configPath(storageDir), null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !Array.isArray(raw.room_ids)) {
     return [...fallbackIds];
   }
+  return normalizeIds(raw.room_ids);
 }
 
 // 熱載入用:重讀並驗證,成功回新清單(含空清單),失敗(檔壞)沿用 current。

@@ -1,14 +1,14 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const { ensureDir } = require("../fsUtils");
 const { STEPS, initState, readState, writeState, markStep } = require("./checkpoint");
 
 const STEP_LABELS = { prepare: "檢查本體 git", ai_run: "AI 改動本體", verify: "驗證改動", summarize: "彙總結果" };
 
 // 對 queue/logs/<id>.log append 一行 NDJSON(印完即落地)。
 function appendLog(queueDir, id, obj) {
-  const logsDir = path.join(queueDir, "logs");
-  fs.mkdirSync(logsDir, { recursive: true });
+  const logsDir = ensureDir(path.join(queueDir, "logs"));
   fs.appendFileSync(path.join(logsDir, id + ".log"), JSON.stringify(obj) + "\n", "utf8");
 }
 

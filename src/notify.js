@@ -1,6 +1,6 @@
 "use strict";
-const fs = require("fs");
 const path = require("path");
+const { writeJsonAtomic } = require("./fsUtils");
 const { readLogLines } = require("./executors/agentExecutor");
 
 // 截斷過長字串(失敗原因可能是一整段 stack,只留重點避免通知太長)。
@@ -23,7 +23,6 @@ function readSummaryFromLog(queueDir, id) {
 function writeNotifyFile(info) {
   const { queueDir, id, status, task, error } = info;
   const notifyDir = path.join(queueDir, "notify");
-  fs.mkdirSync(notifyDir, { recursive: true });
   const summary = status === "done" ? readSummaryFromLog(queueDir, id) : truncate(error, 200);
   const payload = {
     status,
@@ -33,11 +32,7 @@ function writeNotifyFile(info) {
     summary,
     ts: new Date().toISOString(),
   };
-  const dest = path.join(notifyDir, id + ".json");
-  const tmp = dest + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(payload, null, 2), "utf8");
-  fs.renameSync(tmp, dest); // 原子落地:bot 的 fs.watch 讀到時一定是完整檔
-  return payload;
+  return writeJsonAtomic(path.join(notifyDir, id + ".json"), payload); // 原子落地:bot 的 fs.watch 讀到時一定是完整檔
 }
 
 // 把 Matrix 使用者 id 縮短成 localpart:@patrick.zyx:ims.opscloud.info → @patrick.zyx。

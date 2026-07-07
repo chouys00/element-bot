@@ -1,6 +1,6 @@
 "use strict";
-const fs = require("fs");
 const path = require("path");
+const { readJsonSafe, writeJsonAtomic } = require("../fsUtils");
 
 const STEPS = ["prepare", "ai_run", "verify", "summarize"];
 
@@ -17,21 +17,13 @@ function initState(id) {
 
 // 讀 state.json;不存在或損毀回 null(視為無檢查點 → 從頭重跑)。
 function readState(workDir) {
-  try {
-    return JSON.parse(fs.readFileSync(statePath(workDir), "utf8"));
-  } catch (_) {
-    return null;
-  }
+  return readJsonSafe(statePath(workDir), null);
 }
 
 // 原子寫:先寫 .tmp 再 rename,確保任何時點中斷都有完整檔。
 function writeState(workDir, state) {
-  fs.mkdirSync(workDir, { recursive: true });
   state.updated_at = new Date().toISOString();
-  const tmp = statePath(workDir) + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf8");
-  fs.renameSync(tmp, statePath(workDir));
-  return state;
+  return writeJsonAtomic(statePath(workDir), state);
 }
 
 // 回傳第一個非 ok 的步驟;全部 ok 回 null。

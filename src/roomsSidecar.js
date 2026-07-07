@@ -1,20 +1,16 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const { readJsonSafe, writeJsonAtomic } = require("./fsUtils");
 
 // 把 room_id → 名稱 映射寫入 storage/rooms.json。
 function writeRoomsSidecar(storageDir, entries) {
-  if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
-  fs.writeFileSync(path.join(storageDir, "rooms.json"), JSON.stringify(entries, null, 2), "utf8");
+  writeJsonAtomic(path.join(storageDir, "rooms.json"), entries);
 }
 
 // 讀 rooms.json;不存在/壞掉回空物件。
 function readRoomsMap(storageDir) {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(storageDir, "rooms.json"), "utf8"));
-  } catch (_) {
-    return {};
-  }
+  return readJsonSafe(path.join(storageDir, "rooms.json"), {});
 }
 
 // 用映射翻譯 room_id;查不到回退顯示原 id。

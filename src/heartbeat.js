@@ -1,6 +1,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const { ensureDir } = require("./fsUtils");
 
 // 時間戳是否在 maxAgeMs 內(用來判斷 bot 是否存活)。
 function isFresh(ts, now, maxAgeMs) {
@@ -19,7 +20,7 @@ function readHeartbeat(storageDir) {
 
 // 把當下時間戳寫進心跳檔。
 function writeHeartbeat(storageDir) {
-  if (!fs.existsSync(storageDir)) fs.mkdirSync(storageDir, { recursive: true });
+  ensureDir(storageDir);
   fs.writeFileSync(path.join(storageDir, "bot-heartbeat"), String(Date.now()), "utf8");
 }
 

@@ -1,5 +1,6 @@
 "use strict";
 const fs = require("fs");
+const { writeJsonAtomic } = require("./fsUtils");
 
 // 驗證單一規則物件;不合法即丟出 Error。合法回傳 true。
 function validateRule(rule, index) {
@@ -59,10 +60,7 @@ function saveRules(rulesPath, rules) {
       throw new Error(`rules[${i}] 啟用中的規則必須至少指定一個房間(rooms 不可為空)`);
     }
   });
-  const tmp = rulesPath + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(rules, null, 2), "utf8");
-  fs.renameSync(tmp, rulesPath);
-  return rules;
+  return writeJsonAtomic(rulesPath, rules);
 }
 
 module.exports = { loadRules, validateRule, saveRules };
