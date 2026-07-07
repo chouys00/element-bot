@@ -9,8 +9,8 @@
     "task": "demo-skill",
     "use_llm": false,
     "rooms": [
-      "!UyYnRuPElTnXuPNXSC:ims.opscloud.info",
-      "!ShbfRcnavqQmvmRrPC:ims.opscloud.info"
+      "!jOuxmbWVxsEbbcByqa:ims.opscloud.info",
+      "!UyYnRuPElTnXuPNXSC:ims.opscloud.info"
     ]
   },
   {

@@ -165,12 +165,18 @@ function renderDryResult(results) {
   const out = document.getElementById("dryResult");
   document.getElementById("probeResult").innerHTML = ""; // 清掉上次實跑結果
   if (!results.length) { out.innerHTML = `<span class="muted">（尚無規則)</span>`; return; }
+  // 「全部房間」試跑=假設訊息就發在規則的目標房間;實際訊息若發在別的房間仍不會觸發,
+  // 通過的規則附上生效房間提醒,避免「試跑通過、實際沒觸發」的誤解。
+  const roomUnspecified = !document.getElementById("dry_room").value;
+  const scopeHint = (r) => roomUnspecified
+    ? `<br><span class="hint">⚠ 僅在其設定房間生效:${(r.rooms || []).map((id) => esc(roomLabel(id))).join("、")}</span>`
+    : "";
   const rows = results.map((r, i) => {
     // 觸發判斷。needs_llm 的規則先顯示「關鍵字過閘 + LLM 判斷中…」,稍後由背景 judge 呼叫原地換成真實結果。
     let verdict, cls;
-    if (r.triggers) { verdict = "✅ 會觸發"; cls = "ok"; }
+    if (r.triggers) { verdict = `✅ 會觸發${scopeHint(r)}`; cls = "ok"; }
     else if (r.needs_llm) {
-      verdict = `🔑 關鍵字/房間/啟用:通過<br><span class="llm">🤖 LLM 判斷中…⏳</span>`; cls = "";
+      verdict = `🔑 關鍵字/房間/啟用:通過<br><span class="llm">🤖 LLM 判斷中…⏳</span>${scopeHint(r)}`; cls = "";
     }
     else {
       const reasons = [];
@@ -232,12 +238,16 @@ async function fillLlmVerdict(index, r) {
   const body = document.getElementById("dry_text").value;
   const token = dryRunToken;
   const kwLine = "🔑 關鍵字/房間/啟用:通過";
+  // 「全部房間」試跑時保留生效房間提醒(回填會整格重寫,不加會把提醒蓋掉)。
+  const scopeHint = !document.getElementById("dry_room").value
+    ? `<br><span class="hint">⚠ 僅在其設定房間生效:${(r.rooms || []).map((id) => esc(roomLabel(id))).join("、")}</span>`
+    : "";
   const set = (html, cls) => {
     if (token !== dryRunToken) return;            // 已重跑/換訊息:放棄回填
     const cell = document.getElementById(`verdict-${index}`);
     if (!cell) return;
     cell.className = cls;
-    cell.innerHTML = `${kwLine}<br>${html}`;
+    cell.innerHTML = `${kwLine}<br>${html}${scopeHint}`;
   };
   try {
     const res = await fetch("/api/rules/judge", { method: "POST", body: JSON.stringify({ index, body }) });

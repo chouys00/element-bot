@@ -25,11 +25,14 @@ function fillTemplate(template, params) {
 }
 
 // 觸發管線(注入 judgeFn / enqueueFn / logger 以利測試與替換)。
-// deps = { rules, judgeFn(rule, body)->{trigger,params}, enqueueFn(task)->filepath, logger }
+// deps = { rules, judgeFn(rule, body)->{trigger,params}, enqueueFn(task)->filepath, logger,
+//          judgeStatus?: { start(rule, rec)->id, finish(id, {result, detail?}) } }
+// judgeStatus 選填:把 LLM 判斷的進行中/不觸發/失敗落地成紀錄檔,dashboard 才分得清
+// 「沒收到 vs 判斷中 vs LLM 判定不觸發 vs 判斷失敗」(見 judgeStatus.js)。
 // 對一則正規化訊息 rec:關鍵字粗篩 → 房間範圍過濾 → 逐條決定直接觸發或經 LLM → 觸發則 enqueue。
 // 單條規則的任何錯誤只記 log,不中斷其他規則,也不向外丟出。
 async function runTriggerPipeline(rec, deps) {
-  const { rules, judgeFn, enqueueFn, logger } = deps;
+  const { rules, judgeFn, enqueueFn, logger, judgeStatus } = deps;
   const body = rec && rec.content && rec.content.body;
   const roomId = rec && rec.room_id;
   const matched = matchRules(body, rules)
@@ -39,11 +42,20 @@ async function runTriggerPipeline(rec, deps) {
     try {
       let params = {};
       if (rule.use_llm) {
-        const result = await judgeFn(rule, body);
+        const jid = judgeStatus ? judgeStatus.start(rule, rec) : null;
+        let result;
+        try {
+          result = await judgeFn(rule, body);
+        } catch (err) {
+          if (jid != null) judgeStatus.finish(jid, { result: "error", detail: String((err && err.message) || err) });
+          throw err;
+        }
         if (!result || result.trigger !== true) {
+          if (jid != null) judgeStatus.finish(jid, { result: "rejected" });
           logger.log(`[trigger] 規則 ${rule.name} LLM 判定不觸發`);
           continue;
         }
+        if (jid != null) judgeStatus.finish(jid, { result: "triggered" });
         params = result.params || {};
       }
       const task = {

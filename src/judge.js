@@ -74,8 +74,10 @@ function parseJudgeText(text) {
 
 // spawn `claude -p`,prompt 走 stdin(避免命令列跳脫/注入問題)。
 // 非零 exit code、spawn error 或 timeout 都會 reject。
+// timeout 預設 120s(可用 JUDGE_TIMEOUT_MS 覆寫):worker 同時在跑 ai_run 時機器很忙,
+// CLI 冷啟動+排隊常超過 60s,太短會讓「同一句話有時觸發有時沒反應」。
 function runClaude(prompt, opts = {}) {
-  const timeoutMs = opts.timeoutMs || 60000;
+  const timeoutMs = opts.timeoutMs || parseInt(process.env.JUDGE_TIMEOUT_MS || "120000", 10);
   return new Promise((resolve, reject) => {
     // Windows 上 claude 是 .cmd,需要 shell 才能解析;args 固定為 ["-p"],無外部輸入,無注入風險。
     const child = spawn("claude", ["-p"], { shell: process.platform === "win32" });
@@ -106,10 +108,21 @@ function runClaude(prompt, opts = {}) {
 
 // 串接:組 prompt → 跑 claude CLI → 解析。不再需要 client。
 // opts.run 可注入替代執行器以利測試(預設真正 spawn claude)。
+// opts.retries(預設 1):CLI 偶發 timeout / 非零 exit / 輸出不合 schema 時重試一次,
+// 降低「同一句話間歇性沒觸發」;仍失敗才丟錯(由呼叫端記錄)。
 async function judge(rule, message, opts = {}) {
   const run = opts.run || runClaude;
-  const out = await run(buildPrompt(rule, message), opts);
-  return parseJudgeText(out);
+  const retries = opts.retries != null ? opts.retries : 1;
+  const prompt = buildPrompt(rule, message);
+  let lastErr;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return parseJudgeText(await run(prompt, opts));
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 module.exports = {

@@ -54,5 +54,21 @@ fs.writeFileSync(path.join(queueDir, "work", "t1", "verified.json"), "{}", "utf8
 ok("verified 反映標記檔", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t1").verified === true);
 ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t2").verified === false);
 
+// ── LLM 判斷紀錄(judging/judged)進任務清單 ──
+fs.mkdirSync(path.join(queueDir, "judging"), { recursive: true });
+fs.mkdirSync(path.join(queueDir, "judged"), { recursive: true });
+writeTask(queueDir, "judging", "j1.json", { rule: "測試", task: "skill-dispatch", enqueued_at: "2026-06-26T03:00:00.000Z", source: { room_id: "!r:s", sender: "@a", body: "日常修改", event_id: "$3" }, judge: { status: "judging" } });
+writeTask(queueDir, "judged", "j2.json", { rule: "測試", task: "skill-dispatch", enqueued_at: "2026-06-26T04:00:00.000Z", source: { room_id: "!r:s", sender: "@a", body: "純聊天", event_id: "$4" }, judge: { status: "rejected", detail: null } });
+{
+  const withJudge = collectTasks(queueDir, rooms, 100);
+  const j1 = withJudge.find((t) => t.id === "j1");
+  const j2 = withJudge.find((t) => t.id === "j2");
+  ok("judging 紀錄進任務清單", j1 && j1.status === "judging" && j1.judge.status === "judging");
+  ok("judged 紀錄進任務清單且帶 judge 欄位", j2 && j2.status === "judged" && j2.judge.status === "rejected");
+  ok("判斷紀錄照 enqueued_at 排最前", withJudge[0].id === "j2");
+  const c2 = statusCounts(queueDir);
+  ok("statusCounts 含 judging/judged", c2.judging === 1 && c2.judged === 1);
+}
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(`aggregate.test.js: ${passed} 項通過 ✅`);

@@ -73,6 +73,61 @@ function recIn(roomId, body) {
     ok("judge 失敗不入列", enqueued.length === 0);
   }
 
+  // ── LLM 判斷狀態紀錄(judgeStatus 注入)──
+  {
+    const events = [];
+    const judgeStatus = {
+      start: (rule) => { events.push(`start:${rule.name}`); return "jid1"; },
+      finish: (id, o) => events.push(`finish:${id}:${o.result}`),
+    };
+    const rules = [{ name: "deploy", keywords: ["部署"], task: "d", use_llm: true, intent: "x", rooms: ["!r:s"] }];
+    await runTriggerPipeline(rec("我要部署"), {
+      rules, judgeFn: async () => ({ trigger: true, params: {} }),
+      enqueueFn: () => "f", logger: silentLogger, judgeStatus,
+    });
+    ok("LLM 觸發:start → finish(triggered)", events.join(",") === "start:deploy,finish:jid1:triggered");
+
+    events.length = 0;
+    await runTriggerPipeline(rec("我要部署"), {
+      rules, judgeFn: async () => ({ trigger: false, params: {} }),
+      enqueueFn: () => "f", logger: silentLogger, judgeStatus,
+    });
+    ok("LLM 拒絕:finish(rejected)", events.join(",") === "start:deploy,finish:jid1:rejected");
+
+    events.length = 0;
+    await runTriggerPipeline(rec("我要部署"), {
+      rules, judgeFn: async () => { throw new Error("CLI timeout"); },
+      enqueueFn: () => "f", logger: silentLogger, judgeStatus,
+    });
+    ok("LLM 失敗:finish(error)", events.join(",") === "start:deploy,finish:jid1:error");
+  }
+
+  {
+    // start 回 null(紀錄寫失敗)時不呼叫 finish、也不影響觸發
+    const enqueued = [];
+    let finished = 0;
+    await runTriggerPipeline(rec("我要部署"), {
+      rules: [{ name: "deploy", keywords: ["部署"], task: "d", use_llm: true, intent: "x", rooms: ["!r:s"] }],
+      judgeFn: async () => ({ trigger: true, params: {} }),
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+      judgeStatus: { start: () => null, finish: () => finished++ },
+    });
+    ok("start 失敗(null)不呼叫 finish 且照常觸發", finished === 0 && enqueued.length === 1);
+  }
+
+  {
+    // 未注入 judgeStatus(舊呼叫方式)完全不受影響
+    const enqueued = [];
+    await runTriggerPipeline(rec("我要部署"), {
+      rules: [{ name: "deploy", keywords: ["部署"], task: "d", use_llm: true, intent: "x", rooms: ["!r:s"] }],
+      judgeFn: async () => ({ trigger: true, params: {} }),
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: silentLogger,
+    });
+    ok("未注入 judgeStatus 向後相容", enqueued.length === 1);
+  }
+
   // ── 房間範圍(rooms 欄位)──
   const roomScoped = (rooms) => [{ name: "色", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms }];
 

@@ -13,6 +13,7 @@ const { watchRules, reloadRules } = require("./rulesWatcher");
 const { runTriggerPipeline } = require("./trigger");
 const { judge } = require("./judge");
 const { enqueueTask } = require("./enqueue");
+const { startJudging, finishJudging } = require("./judgeStatus");
 const path = require("path");
 const fs = require("fs");
 const { startHeartbeat } = require("./heartbeat");
@@ -103,6 +104,12 @@ async function main() {
           judgeFn,
           enqueueFn: (task) => enqueueTask(config.queueDir, task),
           logger: console,
+          // LLM 判斷狀態落地(queue/judging + queue/judged),dashboard 顯示「判斷中/不觸發/失敗」。
+          // 紀錄失敗不影響觸發本身。
+          judgeStatus: {
+            start: (rule, r) => { try { return startJudging(config.queueDir, rule, r); } catch (_) { return null; } },
+            finish: (id, outcome) => { try { finishJudging(config.queueDir, id, outcome); } catch (_) {} },
+          },
         });
       } catch (err) {
         console.error("[element-bot] 觸發管線錯誤(不影響擷取):", err.message);

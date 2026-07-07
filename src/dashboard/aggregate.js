@@ -3,7 +3,9 @@ const fs = require("fs");
 const path = require("path");
 const { translateRoom } = require("../roomsSidecar");
 
-const STATUS_DIRS = ["pending", "processing", "done", "failed"];
+// judging/judged 為 LLM 判斷紀錄(見 judgeStatus.js):judging=判斷中,judged=判定不觸發/判斷失敗。
+// 一併列進任務清單,使用者才分得清「沒收到 vs 判斷中 vs LLM 拒絕 vs 判斷失敗」。
+const STATUS_DIRS = ["judging", "judged", "pending", "processing", "done", "failed"];
 
 // 合併四個狀態目錄的任務檔,翻譯房間名稱,依 enqueued_at 新到舊排序,取前 limit 筆。
 // 壞掉的 JSON 不讓整批失敗,標記 parseError 後保留。
@@ -40,6 +42,7 @@ function collectTasks(queueDir, roomsMap, limit) {
         event_id: src.event_id,
         enqueued_at: task.enqueued_at,
         verified: isVerified(queueDir, id),
+        ...(task.judge ? { judge: task.judge } : {}),
       });
     }
   }
@@ -49,7 +52,7 @@ function collectTasks(queueDir, roomsMap, limit) {
 
 // 各狀態目錄的 .json 數量。額外給 review = done 但尚未驗收的數量(供「待驗收 / 完成」拆分)。
 function statusCounts(queueDir) {
-  const counts = { pending: 0, processing: 0, done: 0, failed: 0, review: 0 };
+  const counts = { judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, review: 0 };
   for (const status of STATUS_DIRS) {
     try {
       const files = fs.readdirSync(path.join(queueDir, status)).filter((f) => f.endsWith(".json"));
@@ -91,16 +94,17 @@ function readMessagesTail(outputFile, n) {
   return out.reverse();
 }
 
-// 解析 queue/logs/<id>.log 的 NDJSON → { steps:[{key,label,status,ms,note}], summary|null }。
-// 同一 step 多行取最新;summary 取最後一個有頂層 status 的物件。
+// 解析 queue/logs/<id>.log 的 NDJSON → { steps:[{key,label,status,ms,note}], summary|null, aiOutput|null }。
+// 同一 step 多行取最新;summary 取最後一個有頂層 status 的物件;aiOutput 為 ai_run 步驟的 claude 實際輸出。
 function parseProgress(queueDir, id) {
   let raw;
   try { raw = fs.readFileSync(path.join(queueDir, "logs", id + ".log"), "utf8"); }
-  catch (_) { return { steps: [], summary: null }; }
+  catch (_) { return { steps: [], summary: null, aiOutput: null }; }
 
   const order = [];
   const byKey = {};
   let summary = null;
+  let aiOutput = null;
   for (const line of raw.split("\n")) {
     const s = line.trim();
     if (!s) continue;
@@ -115,11 +119,13 @@ function parseProgress(queueDir, id) {
       if (o.status != null) byKey[o.step].status = o.status;
       if (o.ms != null) byKey[o.step].ms = o.ms;
       if (o.note != null) byKey[o.step].note = o.note;
+    } else if (typeof o.ai_output === "string") {
+      aiOutput = o.ai_output;
     } else if (typeof o.status === "string") {
       summary = o;
     }
   }
-  return { steps: order.map((k) => byKey[k]), summary };
+  return { steps: order.map((k) => byKey[k]), summary, aiOutput };
 }
 
 // 任務是否已被人工驗收(work/<id>/verified.json 存在)。

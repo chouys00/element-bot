@@ -37,6 +37,7 @@
   tr.task.sel { background: #283041; }
   .badge { padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; }
   .pending { background: #9ca3af; } .processing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed { background: #ef4444; }
+  .judging { background: #8b5cf6; } .rejected { background: #4b5563; } .judge_error { background: #b45309; }
   pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   .muted { color: #777; }
   .k { color: #889; display: inline-block; min-width: 64px; }
@@ -120,13 +121,15 @@
 </div>
 
 <script>
-const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗" };
+const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
 let selectedId = null;
 let lastTasks = [];
 
 // 顯示用狀態:done 但尚未驗收 → 待驗收(review);已驗收 → 完成(done)。
+// judging = LLM 判斷進行中;judged = 已判完但沒觸發(拒絕或判斷失敗)。
 function displayStatus(t) {
   if (t.status === "done") return t.verified ? "done" : "review";
+  if (t.status === "judged") return t.judge && t.judge.status === "error" ? "judge_error" : "rejected";
   return t.status;
 }
 
@@ -155,7 +158,7 @@ function renderStatus(s) {
   const review = c.review || 0;
   const finished = (c.done || 0) - review; // 完成 = done 之中已驗收的
   document.getElementById("counts").innerHTML =
-    `<span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>待驗收 ${review}</span><span>完成 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
+    `<span>LLM 判斷中 ${c.judging || 0}</span><span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>待驗收 ${review}</span><span>完成 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
 }
 
 function renderMsgs(msgs) {
@@ -211,14 +214,32 @@ async function renderDetail() {
         ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "")
     : "";
 
+  // claude 在專案內的實際輸出(ai_run 步驟),讓「結果」不只有一行彙總。
+  const aiHtml = prog.aiOutput
+    ? `<div class="k" style="margin-top:8px">執行輸出 (claude)</div><pre>${esc(prog.aiOutput)}</pre>`
+    : "";
+
+  // LLM 判斷紀錄(judging/judged):判斷中/不觸發/失敗與失敗原因。
+  let judgeHtml = "";
+  if (t.status === "judging") {
+    judgeHtml = `<div class="k" style="margin-top:8px">LLM 判斷</div><div style="color:#a78bfa">⏳ 判斷中…(結果出來前不會入列)</div>`;
+  } else if (t.status === "judged" && t.judge) {
+    judgeHtml = `<div class="k" style="margin-top:8px">LLM 判斷</div>` +
+      (t.judge.status === "error"
+        ? `<div style="color:#ff9d96">✗ 判斷失敗:${esc(t.judge.detail || "(無錯誤訊息)")}</div>`
+        : `<div class="muted">✗ LLM 判定不觸發(關鍵字有命中,但內容不符觸發意圖)</div>`);
+  }
+
   box.innerHTML = `
     <div><span class="k">狀態</span> ${badge(displayStatus(t))}</div>
     <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>
     <div><span class="k">規則</span> ${esc(t.rule)} → ${esc(t.task)}</div>
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
+    ${judgeHtml}
     ${stepsHtml}
-    ${sumHtml}`;
+    ${sumHtml}
+    ${aiHtml}`;
 
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
     ${sum && sum.openPath ? `<button data-act="open" class="abtn">開啟專案</button>` : ""}

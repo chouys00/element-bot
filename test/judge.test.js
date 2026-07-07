@@ -69,19 +69,38 @@ throws("trigger 非布林丟錯", () => parseJudgeText('{"params":{}}'));
   );
   ok("judge 把 buildPrompt 結果交給 run", seenPrompt === buildPrompt({ intent: "要部署才觸發", extract: ["環境"] }, "幫我部署到 prod"));
 
-  // run 失敗(CLI 非零 exit / timeout)→ judge 丟出
+  // run 失敗(CLI 非零 exit / timeout)→ judge 丟出(重試也失敗)
   await rejects("run 失敗時 judge 丟出", () => judge(
     { intent: "x", extract: [] },
     "y",
     { run: async () => { throw new Error("claude CLI exit 1"); } }
   ));
 
-  // run 回傳無法解析的內容 → judge 丟出
+  // run 回傳無法解析的內容 → judge 丟出(重試也失敗)
   await rejects("run 回傳非 JSON 時 judge 丟出", () => judge(
     { intent: "x", extract: [] },
     "y",
     { run: async () => "看不懂的輸出" }
   ));
+
+  // 預設重試一次:第一次失敗、第二次成功 → 不丟錯
+  {
+    let calls = 0;
+    const res = await judge({ intent: "x", extract: [] }, "y", {
+      run: async () => { calls++; if (calls === 1) throw new Error("timeout"); return '{"trigger":true,"params":{}}'; },
+    });
+    ok("第一次失敗、重試成功", calls === 2 && res.trigger === true);
+  }
+
+  // retries: 0 可關閉重試
+  {
+    let calls = 0;
+    await rejects("retries:0 不重試", () => judge({ intent: "x", extract: [] }, "y", {
+      retries: 0,
+      run: async () => { calls++; throw new Error("boom"); },
+    }));
+    ok("retries:0 只跑一次", calls === 1);
+  }
 
   console.log(`judge.test.js: ${passed} 項通過 ✅`);
 })();

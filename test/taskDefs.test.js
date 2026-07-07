@@ -49,8 +49,14 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("skill-dispatch prompt 帶入指令", def.prompt({ command: "/i18n pages/activity" }).includes("/i18n pages/activity"));
   ok("skill-dispatch prompt 提及用 skill 識別", def.prompt({ command: "啟動" }).includes("skill"));
   ok("skill-dispatch prompt 含安全紅線", def.prompt({ command: "啟動" }).includes("安全紅線"));
+  ok("skill-dispatch prompt 預設不 commit(依 skill 文件指示)", def.prompt({ command: "啟動" }).includes("預設不 commit"));
+  ok("skill-dispatch prompt 禁止自作主張 commit", def.prompt({ command: "啟動" }).includes("絕不自作主張"));
   ok("skill-dispatch 不跑 verify(verifyArgs null)", def.verifyArgs == null);
 }
+
+// 兩個「直接改本體」任務的 prompt:commit 與否由專案 skill 文件決定,
+// 但 headless claude 不得自作主張(沒被要求就 commit 曾導致成敗誤判,見 defaultHandlers.summarize)。
+ok("demo-skill prompt 預設不 commit(依 SKILL.md 指示)", getTaskDef("demo-skill").prompt({ source: { body: "x" } }).includes("預設不 commit"));
 
 {
   const names = taskNames();

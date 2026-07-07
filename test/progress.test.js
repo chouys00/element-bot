@@ -51,5 +51,20 @@ function writeLog(q, id, lines) {
   ok("無 log 回空進度", p.steps.length === 0 && p.summary === null);
   fs.rmSync(q, { recursive: true, force: true });
 }
+{
+  // ai_output 行(claude 實際輸出)帶出供任務詳情顯示
+  const q = freshQueue();
+  writeLog(q, "j3", [
+    { steps: [{ key: "ai_run", label: "AI 改動本體" }] },
+    { step: "ai_run", status: "run" },
+    { ai_output: "我把 index.html 的背景改成 #FFFF33 了" },
+    { step: "ai_run", status: "ok", ms: 100 },
+    { status: "OK", summary: "改動 1 個檔" },
+  ]);
+  const p = parseProgress(q, "j3");
+  ok("帶出 ai_output", p.aiOutput && p.aiOutput.includes("#FFFF33"));
+  ok("ai_output 不干擾 summary", p.summary && p.summary.status === "OK");
+  fs.rmSync(q, { recursive: true, force: true });
+}
 
 console.log(`progress.test.js: ${passed} 項通過 ✅`);

@@ -21,7 +21,26 @@ function gitChanged(srcDir) {
     .map((l) => l.slice(3).trim()); // porcelain:前兩字元狀態 + 空格,其後為路徑
 }
 
-// 在專案目錄(本體)內跑 headless claude;非零 exit 丟錯。
+// 目前 HEAD 的 commit hash;無 commit / 非 git 回 null。
+// prepare 記下起跑 HEAD,summarize 據此偵測 skill 是否違規自行 commit。
+function gitHead(srcDir) {
+  const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: srcDir, encoding: "utf8" });
+  if (r.error || r.status !== 0) return null;
+  return (r.stdout || "").trim() || null;
+}
+
+// baseHead 之後新增的 commit(短 hash + 標題)與這些 commit 動到的檔案。
+function gitCommitsSince(srcDir, baseHead) {
+  const log = spawnSync("git", ["log", "--format=%h %s", `${baseHead}..HEAD`], { cwd: srcDir, encoding: "utf8" });
+  if (log.error || log.status !== 0) return { commits: [], files: [] };
+  const commits = (log.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!commits.length) return { commits: [], files: [] };
+  const diff = spawnSync("git", ["diff", "--name-only", baseHead, "HEAD"], { cwd: srcDir, encoding: "utf8" });
+  const files = (diff.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  return { commits, files };
+}
+
+// 在專案目錄(本體)內跑 headless claude;非零 exit 丟錯。回傳 stdout(進任務 log 供詳情顯示)。
 function runClaude(prompt, projectDir) {
   const r = spawnSync("claude", ["--dangerously-skip-permissions", "-p"], {
     input: prompt,
@@ -31,6 +50,7 @@ function runClaude(prompt, projectDir) {
   });
   if (r.error) throw r.error;
   if (r.status !== 0) throw new Error("claude 失敗:" + String(r.stderr || "").slice(0, 200));
+  return String(r.stdout || "");
 }
 
 // 跑 verify 腳本,從輸出解析 errors=/warnings=。
@@ -43,4 +63,4 @@ function runVerify(args) {
   return { errors: parseInt(m[1], 10), warnings: parseInt(m[2], 10) };
 }
 
-module.exports = { gitClean, gitChanged, runClaude, runVerify };
+module.exports = { gitClean, gitChanged, gitHead, gitCommitsSince, runClaude, runVerify };
