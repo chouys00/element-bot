@@ -4,6 +4,8 @@ storage/
 output/
 *.log
 .idea/
-.claude/
+# .claude 下只提交 skills(要跟著 repo 到部署機器),settings/launch 等本機設定不提交。
+.claude/*
+!.claude/skills/
 queue/
 .superpowers/
