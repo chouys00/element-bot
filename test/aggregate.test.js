@@ -24,18 +24,27 @@ const rooms = { "!r:s": "產品群" };
 
 writeTask(queueDir, "done", "t1.json", { rule: "會議", task: "cal", enqueued_at: "2026-06-26T01:00:00.000Z", source: { room_id: "!r:s", sender: "@a", body: "hi", event_id: "$1" } });
 writeTask(queueDir, "pending", "t2.json", { rule: "退款", task: "ticket", enqueued_at: "2026-06-26T02:00:00.000Z", source: { room_id: "!x:s", sender: "@b", body: "refund", event_id: "$2" } });
+writeTask(queueDir, "processing", "t3.json", {
+  rule: "禪道派工", task: "skill-dispatch", enqueued_at: "2026-06-26T02:30:00.000Z",
+  project_path: "D:\\GB\\PC\\ftl\\ftl", command: "https://zentao.gbboss.com/bug-view-1",
+  source: { room_id: "!r:s", sender: "@a", body: "日常修改 x", event_id: "$5" },
+});
 fs.writeFileSync(path.join(queueDir, "failed", "bad.json"), "{ not json", "utf8");
 
 const tasks = collectTasks(queueDir, rooms, 100);
-ok("收齊三筆(含壞檔)", tasks.length === 3);
-ok("依 enqueued_at 新到舊", tasks[0].id === "t2" && tasks[1].id === "t1");
-ok("done 任務翻出房間名稱", tasks[1].room_name === "產品群");
-ok("無名稱回退 id", tasks[0].room_name === "!x:s");
+ok("收齊四筆(含壞檔)", tasks.length === 4);
+ok("依 enqueued_at 新到舊", tasks[0].id === "t3" && tasks[1].id === "t2" && tasks[2].id === "t1");
+const t3 = tasks.find((t) => t.id === "t3");
+ok("skill-dispatch 帶出 project_path", t3.project_path === "D:\\GB\\PC\\ftl\\ftl");
+ok("skill-dispatch 帶出 command", t3.command === "https://zentao.gbboss.com/bug-view-1");
+ok("非 skill-dispatch 任務不帶 project_path", tasks.find((t) => t.id === "t1").project_path === undefined);
+ok("done 任務翻出房間名稱", tasks.find((t) => t.id === "t1").room_name === "產品群");
+ok("無名稱回退 id", tasks.find((t) => t.id === "t2").room_name === "!x:s");
 ok("壞檔標記 parseError", tasks.some((t) => t.parseError === true));
 ok("limit 生效", collectTasks(queueDir, rooms, 1).length === 1);
 
 const counts = statusCounts(queueDir);
-ok("狀態統計正確", counts.done === 1 && counts.pending === 1 && counts.failed === 1 && counts.processing === 0);
+ok("狀態統計正確", counts.done === 1 && counts.pending === 1 && counts.failed === 1 && counts.processing === 1);
 
 ok("無日誌回占位", resolveTaskLog(queueDir, "t1").source === "none");
 fs.writeFileSync(path.join(queueDir, "failed", "bad.json.error.txt"), "boom", "utf8");

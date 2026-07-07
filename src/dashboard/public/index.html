@@ -167,16 +167,30 @@ function renderMsgs(msgs) {
   ).join("") || `<tr><td class="muted">（尚無訊息）</td></tr>`;
 }
 
+// skill-dispatch 是通用「計程車」任務,task 欄本身固定不變,對分辨「這則任務送去哪」沒有資訊量。
+// 改顯示 project_path 的最後一段目錄名(如 D:\GB\PC\ftl\ftl → ftl),內建任務(demo-skill 等)維持顯示原 task 名。
+function taskLabel(t) {
+  if (t.task === "skill-dispatch" && t.project_path) {
+    const seg = String(t.project_path).replace(/[\\/]+$/, "").split(/[\\/]/);
+    return seg[seg.length - 1] || t.task;
+  }
+  return t.task;
+}
+
 function renderTasks(tasks) {
   lastTasks = tasks || [];
   document.getElementById("tasks").innerHTML = lastTasks.map((t) => {
     if (t.parseError) return `<tr class="task" data-id="${esc(t.id)}"><td style="grid-column:span 4" class="failed">⚠ 任務檔解析失敗:${esc(t.id)}</td><td>${badge(t.status)}</td></tr>`;
-    const ruleTask = `${t.rule} → ${t.task}`;
+    const ruleTask = `${t.rule} → ${taskLabel(t)}`;
+    // title:skill-dispatch 顯示的是專案名而非任務型態,hover 補上真實 task 名 + 完整專案路徑,不用點進詳情才看得到。
+    const ruleTaskTitle = t.task === "skill-dispatch" && t.project_path
+      ? `任務類型:${t.task}\n專案路徑:${t.project_path}`
+      : ruleTask;
     return `<tr class="task ${t.id === selectedId ? "sel" : ""}" data-id="${esc(t.id)}">
       <td class="muted" title="${esc(timeOf(t.enqueued_at))}">${timeOf(t.enqueued_at)}</td>
       <td title="${esc(t.room_name)}">${esc(t.room_name)}</td>
       <td title="${esc(t.sender)}">${esc(t.sender)}</td>
-      <td title="${esc(ruleTask)}">${esc(ruleTask)}</td>
+      <td title="${esc(ruleTaskTitle)}">${esc(ruleTask)}</td>
       <td>${badge(displayStatus(t))}</td></tr>`;
   }).join("") || `<tr><td style="grid-column:span 5" class="muted">（尚無觸發的任務）</td></tr>`;
 
@@ -230,11 +244,19 @@ async function renderDetail() {
         : `<div class="muted">✗ LLM 判定不觸發(關鍵字有命中,但內容不符觸發意圖)</div>`);
   }
 
+  // skill-dispatch:清單只顯示得到專案名,詳情頁把完整專案路徑 + 實際送出的指令列出來,
+  // 才看得到當初這則任務具體是「送去哪、送了什麼」。
+  const dispatchHtml = t.task === "skill-dispatch" && t.project_path
+    ? `<div><span class="k">專案路徑</span> <code>${esc(t.project_path)}</code></div>` +
+      (t.command ? `<div><span class="k">送出指令</span> <code>${esc(t.command)}</code></div>` : "")
+    : "";
+
   box.innerHTML = `
     <div><span class="k">狀態</span> ${badge(displayStatus(t))}</div>
     <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>
     <div><span class="k">規則</span> ${esc(t.rule)} → ${esc(t.task)}</div>
+    ${dispatchHtml}
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
     ${judgeHtml}
     ${stepsHtml}

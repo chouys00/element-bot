@@ -43,6 +43,10 @@ function collectTasks(queueDir, roomsMap, limit) {
         enqueued_at: task.enqueued_at,
         verified: isVerified(queueDir, id),
         ...(task.judge ? { judge: task.judge } : {}),
+        // skill-dispatch(通用「計程車」任務)專用:任務清單只顯示得到 task === "skill-dispatch",
+        // 分不出送去哪個專案、送了什麼指令,故把規則存進 task 的這兩欄一併帶出供 dashboard 顯示。
+        ...(task.project_path ? { project_path: task.project_path } : {}),
+        ...(task.command ? { command: task.command } : {}),
       });
     }
   }
