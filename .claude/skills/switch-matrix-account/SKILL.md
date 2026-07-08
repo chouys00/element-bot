@@ -20,7 +20,7 @@ description: 把 element-bot 監聽的 Matrix 帳號從一個換成另一個(例
 1. **新帳號已開好 Secure Backup / 跨簽章**,伺服器上有 key backup、且手上有對應的 recovery key。
    - 為什麼:bot 是「用 recovery key 還原既有 backup 來建立信任」(見 `src/matrixClient.js` 的 `decodeRecoveryKey`、`src/trust.js`)。全新、從沒設過 Secure Backup 的帳號沒有 backup 可還原,信任流程走不通。
 2. **新帳號已被邀請並加入所有要監聽的房間**。
-   - 讀 `storage/rooms-config.json`(不存在則看 `.env` 的 `MATRIX_ROOM_IDS`)列出房間 ID,請使用者確認新帳號都在裡面。不在 → 收不到該房訊息。
+   - 正式監聽清單以 dashboard「🏠 監聽房間」為準(存於 `storage/rooms-config.json`)。讀該檔列出目前房間 ID 給使用者核對——若裡面還是舊的測試房間,請他一併在 dashboard 更新成正式房間。新帳號沒加入某房 → 收不到該房訊息。
 
 ## 2. 停掉正在跑的 bot
 
