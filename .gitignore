@@ -8,4 +8,7 @@ output/
 .claude/*
 !.claude/skills/
 queue/
+# rules.json 是隨部署/機器而異的營運設定(房間 ID、專案絕對路徑、啟停狀態),
+# 由 dashboard 維護、不入版控。範本見 config/rules.example.json。
+config/rules.json
 .superpowers/

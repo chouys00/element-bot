@@ -1,0 +1,22 @@
+[
+  {
+    "name": "改背景色",
+    "keywords": ["改背景", "背景色"],
+    "task": "demo-skill",
+    "use_llm": false,
+    "enabled": false,
+    "rooms": ["!請填要監聽的房間ID:your.homeserver"]
+  },
+  {
+    "name": "禪道日常修改派工(範例)",
+    "keywords": ["日常修改"],
+    "task": "skill-dispatch",
+    "use_llm": true,
+    "enabled": false,
+    "rooms": ["!請填要監聽的房間ID:your.homeserver"],
+    "intent": "訊息必須「同時」滿足兩個條件才觸發:(1) 內含 zentao 連結;(2) 句子中出現「日常修改」字樣。兩者缺一不可。若只是平常貼連結溝通、句中沒有「日常修改」,一律不觸發。",
+    "extract": ["連結"],
+    "project_path": "/absolute/path/to/target/project",
+    "command": "{連結}"
+  }
+]

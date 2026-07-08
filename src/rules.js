@@ -41,7 +41,15 @@ function validateRule(rule, index) {
 
 // 從檔案載入並逐條驗證規則,回傳規則陣列。
 function loadRules(rulesPath) {
-  const raw = fs.readFileSync(rulesPath, "utf8");
+  // rules.json 不入版控、隨部署由 dashboard 建立(saveRules 首次存檔即建檔)。
+  // 全新機器尚未建檔時回空陣列(不監聽任何規則)而非 crash;其餘 I/O 錯誤照拋。
+  let raw;
+  try {
+    raw = fs.readFileSync(rulesPath, "utf8");
+  } catch (e) {
+    if (e && e.code === "ENOENT") return [];
+    throw e;
+  }
   const parsed = JSON.parse(raw);
   if (!Array.isArray(parsed)) throw new Error("rules.json 最外層必須是陣列");
   parsed.forEach((r, i) => validateRule(r, i));

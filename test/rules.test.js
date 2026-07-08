@@ -58,6 +58,12 @@ fs.writeFileSync(tmpBad, JSON.stringify({ not: "array" }), "utf8");
 throws("loadRules 對非陣列丟錯", () => loadRules(tmpBad));
 fs.unlinkSync(tmpBad);
 
+// rules.json 不在版控、隨部署由 dashboard 建立;全新機器尚未建檔時,loadRules 應回空陣列(不監聽任何規則),
+// 而非讓 bot crash。壞 JSON / 非陣列仍要丟錯(那是真的設定錯誤,不可靜默吞掉)。
+const tmpMissing = path.join(os.tmpdir(), `rules-missing-${Date.now()}.json`);
+try { fs.unlinkSync(tmpMissing); } catch (_) {}
+ok("loadRules 對不存在的檔回空陣列", Array.isArray(loadRules(tmpMissing)) && loadRules(tmpMissing).length === 0);
+
 // saveRules:全條合法才原子寫;有壞規則整批拒、檔案不動。
 // 註:啟用中規則存檔時強制要有房間,故 saveRules 測試一律帶 rooms。
 const goodR = { ...good, rooms: ["!a:s"] };
