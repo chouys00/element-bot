@@ -99,7 +99,13 @@ function runClaude(prompt, opts = {}) {
     child.stderr.on("data", (d) => { stderr += d; });
     child.on("close", (code) => {
       if (code === 0) finish(resolve, stdout);
-      else finish(reject, new Error(`claude CLI exit ${code}: ${stderr.trim()}`));
+      else {
+        // claude CLI 的錯誤(例如認證失敗 401)常印在 stdout 而非 stderr,
+        // 只回報 stderr 會讓 dashboard 顯示「exit 1:」後面空白、查不出原因。
+        // 兩者都帶上,優先顯示有內容的那個。
+        const detail = [stderr.trim(), stdout.trim()].filter(Boolean).join(" | ") || "(無輸出)";
+        finish(reject, new Error(`claude CLI exit ${code}: ${detail}`));
+      }
     });
     child.stdin.write(prompt);
     child.stdin.end();
