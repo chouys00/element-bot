@@ -124,6 +124,11 @@
 const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
 let selectedId = null;
 let lastTasks = [];
+// 詳情面板上次渲染的任務與 HTML,用來判斷這次輪詢要不要真的重建 DOM。
+// 每 1.5s 輪詢會重跑 renderDetail;若無腦重設 innerHTML,.detail 容器的 scrollTop 會歸零,
+// 使用者往下捲看「執行輸出」時畫面會一直跳回頂部。內容沒變就完全不動 DOM 即可避免。
+let lastDetailKey = null;
+let lastDetailHtml = null;
 
 // 顯示用狀態:done 但尚未驗收 → 待驗收(review);已驗收 → 完成(done)。
 // judging = LLM 判斷進行中;judged = 已判完但沒觸發(拒絕或判斷失敗)。
@@ -210,7 +215,7 @@ function stepColor(s) { return s === "ok" ? "#7ee787" : s === "run" ? "#58a6ff" 
 async function renderDetail() {
   const t = lastTasks.find((x) => x.id === selectedId);
   const box = document.getElementById("detail");
-  if (!t) { box.innerHTML = `<span class="muted">任務已不在列表中。</span>`; return; }
+  if (!t) { box.innerHTML = `<span class="muted">任務已不在列表中。</span>`; lastDetailKey = null; lastDetailHtml = null; return; }
   let prog = { steps: [], summary: null };
   try { prog = await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/progress`).then((r) => r.json()); } catch (_) {}
 
@@ -251,7 +256,13 @@ async function renderDetail() {
       (t.command ? `<div><span class="k">送出指令</span> <code>${esc(t.command)}</code></div>` : "")
     : "";
 
-  box.innerHTML = `
+  const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+    ${sum && sum.openPath ? `<button data-act="open" class="abtn">開啟專案</button>` : ""}
+    ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收"}</button>` : ""}
+    ${t.status === "failed" ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
+  </div>`;
+
+  const fullHtml = `
     <div><span class="k">狀態</span> ${badge(displayStatus(t))}</div>
     <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>
@@ -261,14 +272,20 @@ async function renderDetail() {
     ${judgeHtml}
     ${stepsHtml}
     ${sumHtml}
-    ${aiHtml}`;
+    ${aiHtml}${actHtml}`;
 
-  const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-    ${sum && sum.openPath ? `<button data-act="open" class="abtn">開啟專案</button>` : ""}
-    ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收"}</button>` : ""}
-    ${t.status === "failed" ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
-  </div>`;
-  box.insertAdjacentHTML("beforeend", actHtml);
+  // 內容與目前顯示的完全相同(同一任務、HTML 沒變)→ 不動 DOM,保住 scrollTop,畫面不跳頂。
+  const sameTask = lastDetailKey === selectedId;
+  if (sameTask && fullHtml === lastDetailHtml) return;
+
+  // 同任務但 HTML 有變(任務執行中 meta/步驟每輪更新;輸出本身是原子性一次寫入,不會增量成長)
+  // → 記住捲動位置,重建後同步還原,面板不跳頂;切換任務才回到頂部。
+  const prevScroll = sameTask ? box.scrollTop : 0;
+  box.innerHTML = fullHtml;
+  box.scrollTop = prevScroll;
+  lastDetailKey = selectedId;
+  lastDetailHtml = fullHtml;
+
   box.querySelectorAll(".abtn").forEach((b) => b.addEventListener("click", () => doAction(b.dataset.act, sum)));
 }
 
