@@ -145,6 +145,21 @@ function displayStatus(t) {
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function timeOf(t) { return t ? new Date(t).toLocaleTimeString("zh-Hant", { hour12: false }) : "—"; }
+// 列表顯示：今天只秀 HH:MM，跨日補 MM/DD
+function timeLabel(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts), now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const hhmm = d.toLocaleTimeString("zh-Hant", { hour12: false, hour: "2-digit", minute: "2-digit" });
+  if (sameDay) return hhmm;
+  return `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${hhmm}`;
+}
+// 完整時間：YYYY/MM/DD HH:MM:SS，用於 title hover 與詳情面板
+function timeFull(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${d.toLocaleTimeString("zh-Hant", { hour12: false })}`;
+}
 function badge(s) { return `<span class="badge ${s}">${STATUS_LABEL[s] || s}</span>`; }
 
 async function refresh() {
@@ -197,7 +212,7 @@ function renderTasks(tasks) {
       ? `任務類型:${t.task}\n專案路徑:${t.project_path}`
       : ruleTask;
     return `<tr class="task ${t.id === selectedId ? "sel" : ""}" data-id="${esc(t.id)}">
-      <td class="muted" title="${esc(timeOf(t.enqueued_at))}">${timeOf(t.enqueued_at)}</td>
+      <td class="muted" title="${esc(timeFull(t.enqueued_at))}">${timeLabel(t.enqueued_at)}</td>
       <td title="${esc(t.room_name)}">${esc(t.room_name)}</td>
       <td title="${esc(t.sender)}">${esc(t.sender)}</td>
       <td title="${esc(ruleTaskTitle)}">${esc(ruleTask)}</td>
@@ -269,6 +284,7 @@ async function renderDetail() {
 
   const fullHtml = `
     <div><span class="k">狀態</span> ${badge(displayStatus(t))}</div>
+    <div><span class="k">入列時間</span> ${timeFull(t.enqueued_at)}</div>
     <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>
     <div><span class="k">規則</span> ${esc(t.rule)} → ${esc(t.task)}</div>
