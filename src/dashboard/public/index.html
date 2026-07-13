@@ -145,13 +145,13 @@ function displayStatus(t) {
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function timeOf(t) { return t ? new Date(t).toLocaleTimeString("zh-Hant", { hour12: false }) : "—"; }
-// 列表顯示：今天只秀 HH:MM，跨日補 MM/DD
+// 列表顯示：今天顯示「今天 HH:MM」，跨日補 MM/DD HH:MM
 function timeLabel(ts) {
   if (!ts) return "—";
   const d = new Date(ts), now = new Date();
   const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
   const hhmm = d.toLocaleTimeString("zh-Hant", { hour12: false, hour: "2-digit", minute: "2-digit" });
-  if (sameDay) return hhmm;
+  if (sameDay) return "今天 " + hhmm;
   return `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${hhmm}`;
 }
 // 完整時間：YYYY/MM/DD HH:MM:SS，用於 title hover 與詳情面板
@@ -413,7 +413,7 @@ setInterval(refresh, 1500);
 makeResizable(document.getElementById("tasksTable"), {
   key: "rz.tasks",
   layout: "grid",
-  mins: [64, 90, 90, 110, 104],
+  mins: [76, 90, 90, 110, 104],
 });
 </script>
 </body>
