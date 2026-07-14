@@ -36,7 +36,7 @@ function writeNotify(queueDir, id, payload) {
     ok("送到設定房間", sent.length === 1 && sent[0].room === "!notify:s");
     ok("訊息含規則名", sent[0].text.includes("週報"));
     ok("發送後刪檔", !fs.existsSync(f));
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // resolveSender 提供顯示名 → 訊息用顯示名而非帳號
@@ -54,7 +54,7 @@ function writeNotify(queueDir, id, payload) {
     ok("resolveSender 命中回 sent", r === "sent");
     ok("訊息用顯示名", sent[0].includes("Patrick.He.t"));
     ok("訊息不出現帳號", !sent[0].includes("@patrick.zyx"));
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // resolveSender 回 null(查不到)→ 退回帳號 localpart,且不因此丟錯
@@ -71,7 +71,7 @@ function writeNotify(queueDir, id, payload) {
     });
     ok("resolveSender 丟錯不影響發送", r === "sent");
     ok("退回帳號 localpart", sent[0].includes("@patrick.zyx"));
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // 停用 → 不發送但仍刪檔(認領)
@@ -84,7 +84,7 @@ function writeNotify(queueDir, id, payload) {
     ok("停用回 skipped", r === "skipped");
     ok("停用不呼叫 sendFn", called === 0);
     ok("停用仍刪檔", !fs.existsSync(f));
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // failed_only:成功任務不發、失敗任務發
@@ -99,7 +99,7 @@ function writeNotify(queueDir, id, payload) {
     const fb = writeNotify(queueDir, "badrun", { status: "failed", rule: "b", source: {} });
     const rb = await processNotifyFile(fb, { storageDir, sendFn: send, logger: silentLogger });
     ok("failed_only 下失敗任務 sent", rb === "sent" && sent.length === 1);
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // 壞 JSON → bad,且刪檔避免卡住
@@ -111,7 +111,7 @@ function writeNotify(queueDir, id, payload) {
     const r = await processNotifyFile(f, { storageDir, sendFn: async () => {}, logger: silentLogger });
     ok("壞 JSON 回 bad", r === "bad");
     ok("壞 JSON 已刪(不卡佇列)", !fs.existsSync(f));
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // 發送失敗 → error(sendFn 丟錯不外拋)
@@ -125,7 +125,7 @@ function writeNotify(queueDir, id, payload) {
     catch (_) { threw = true; }
     ok("發送失敗不外拋", threw === false);
     ok("發送失敗回 error", r === "error");
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // drainNotifyDir:批次處理啟動時殘留
@@ -139,7 +139,7 @@ function writeNotify(queueDir, id, payload) {
     ok("drain 回處理筆數 2", cnt === 2);
     ok("drain 全部發送", n === 2);
     ok("drain 後目錄清空", fs.readdirSync(path.join(queueDir, "notify")).length === 0);
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // drainNotifyDir:目錄不存在 → 0(不丟錯)
@@ -147,7 +147,7 @@ function writeNotify(queueDir, id, payload) {
     const { root, storageDir } = fresh();
     const cnt = await drainNotifyDir(path.join(root, "nope"), { storageDir, sendFn: async () => {}, logger: silentLogger });
     ok("無目錄回 0", cnt === 0);
-    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   console.log(`notifySender.test.js: ${passed} 項通過 ✅`);

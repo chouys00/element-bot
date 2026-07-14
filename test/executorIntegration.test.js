@@ -39,7 +39,7 @@ const codexResult = JSON.stringify({
     ok("summary 含改動檔", summary && summary.produced.includes("index.html"));
     const st = readState(path.join(q, "work", "f1"));
     ok("state 全 ok", st && Object.values(st.steps).every((v) => v === "ok"));
-    fs.rmSync(q, { recursive: true, force: true });
+    fs.rmSync(q, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   // 中斷續跑:state 預seed prepare ok → 跳過 prepare,ai_run 重跑 Codex
@@ -58,7 +58,7 @@ const codexResult = JSON.stringify({
     ok("續跑跳過 prepare(不再讀 HEAD)", !calls.includes("head"));
     ok("續跑重跑 ai_run(codex 被呼叫)", calls.includes("codex"));
     ok("續跑仍出 success summary", (findSummary(readLogLines(q, "f2")) || {}).status === "success");
-    fs.rmSync(q, { recursive: true, force: true });
+    fs.rmSync(q, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
   console.log(`executorIntegration.test.js: ${passed} 項通過 ✅`);
