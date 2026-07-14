@@ -42,7 +42,7 @@ function buildUserText(rule, message) {
 const SYSTEM =
   "你是訊息觸發判斷器。只依使用者提供的觸發條件,判斷訊息是否該觸發,並依指示抽出參數。只輸出符合 schema 的 JSON,不要多餘文字。";
 
-// 把 SYSTEM、user 文字、schema 與「只輸出 JSON」指示組成單一字串,餵給 claude CLI 的 stdin。
+// 把 SYSTEM、user 文字、schema 與「只輸出 JSON」指示組成單一字串,餵給 Codex CLI 的 stdin。
 function buildPrompt(rule, message) {
   return [
     SYSTEM,

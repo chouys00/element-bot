@@ -52,7 +52,7 @@ function writeLog(q, id, lines) {
   fs.rmSync(q, { recursive: true, force: true });
 }
 {
-  // ai_output 行(claude 實際輸出)帶出供任務詳情顯示
+  // ai_output 行(Codex 實際輸出)帶出供任務詳情顯示
   const q = freshQueue();
   writeLog(q, "j3", [
     { steps: [{ key: "ai_run", label: "AI 改動本體" }] },

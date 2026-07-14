@@ -99,7 +99,7 @@ function readMessagesTail(outputFile, n) {
 }
 
 // 解析 queue/logs/<id>.log 的 NDJSON → { steps:[{key,label,status,ms,note}], summary|null, aiOutput|null }。
-// 同一 step 多行取最新;summary 取最後一個有頂層 status 的物件;aiOutput 為 ai_run 步驟的 claude 實際輸出。
+// 同一 step 多行取最新;summary 取最後一個有頂層 status 的物件;aiOutput 為 ai_run 步驟的 Codex 實際輸出。
 function parseProgress(queueDir, id) {
   let raw;
   try { raw = fs.readFileSync(path.join(queueDir, "logs", id + ".log"), "utf8"); }

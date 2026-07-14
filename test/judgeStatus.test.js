@@ -54,7 +54,7 @@ function readJson(p) { return JSON.parse(fs.readFileSync(p, "utf8")); }
   {
     const q = tmpQueue();
     const id = startJudging(q, rule, rec);
-    finishJudging(q, id, { result: "error", detail: "claude CLI timeout(120000ms)" });
+    finishJudging(q, id, { result: "error", detail: "Codex CLI timeout(120000ms)" });
     const o = readJson(path.join(q, "judged", id + ".json"));
     ok("error 紀錄標 error", o.judge.status === "error");
     ok("error 紀錄帶原因", o.judge.detail.includes("timeout"));

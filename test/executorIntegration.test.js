@@ -20,7 +20,7 @@ const TASK = { task: "demo-skill", source: { body: "把背景改成紅色" } };
 const findSummary = (lines) => lines.find((o) => typeof o.status === "string" && !o.step && !o.steps);
 
 (async () => {
-  // 全新任務跑完整鏈(真實 handlers + 假 ops):claude 改本體 → git 有改動 → summary OK
+  // 全新任務跑完整鏈(真實 handlers + 假 ops):Codex 改本體 → git 有改動 → summary OK
   {
     const q = freshQueue();
     const calls = [];
@@ -40,7 +40,7 @@ const findSummary = (lines) => lines.find((o) => typeof o.status === "string" &&
     fs.rmSync(q, { recursive: true, force: true });
   }
 
-  // 中斷續跑:state 預seed prepare ok → 跳過 prepare(不再 gitClean),ai_run 重跑 claude
+  // 中斷續跑:state 預seed prepare ok → 跳過 prepare(不再 gitClean),ai_run 重跑 Codex
   {
     const q = freshQueue();
     const workDir = path.join(q, "work", "f2");

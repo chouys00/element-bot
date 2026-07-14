@@ -19,13 +19,13 @@ const noop = () => {};
     ok("prepare 只 gitClean、不複製", calls.join(",") === "git");
   }
 
-  // ai_run:把 claude 帶進真實專案,prompt 指向 SKILL.md、cwd 為目標專案
+  // ai_run:把 Codex 帶進真實專案,prompt 指向 SKILL.md、cwd 為目標專案
   {
     let prompt = null, cwd = null;
     const ops = { gitClean: () => {}, runCodex: (p, dir) => { prompt = p; cwd = dir; }, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     await h.ai_run({ task: { task: "demo-skill", source: { body: "把背景改成紅色" } }, emit: noop, shared: {} });
-    ok("ai_run 呼叫 claude", prompt !== null);
+    ok("ai_run 呼叫 Codex", prompt !== null);
     ok("ai_run prompt 指向 SKILL.md", typeof prompt === "string" && prompt.includes("SKILL.md"));
     ok("ai_run cwd 為目標專案(sample-app)", typeof cwd === "string" && cwd.endsWith("sample-app"));
   }
@@ -69,14 +69,14 @@ const noop = () => {};
     ok("prepare 記下起跑 HEAD", base.head === "abc123");
   }
 
-  // ai_run:claude 的 stdout 進 log(emit ai_output)
+  // ai_run:Codex 的 stdout 進 log(emit ai_output)
   {
     const emitted = [];
     const ops = { gitClean: () => {}, runCodex: () => "我改了 index.html 的背景色", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     await h.ai_run({ task: { task: "demo-skill", source: { body: "x" } }, emit: (o) => emitted.push(o), shared: {} });
     const out = emitted.find((o) => typeof o.ai_output === "string");
-    ok("ai_run 把 claude 輸出 emit 進 log", out && out.ai_output.includes("背景色"));
+    ok("ai_run 把 Codex 輸出 emit 進 log", out && out.ai_output.includes("背景色"));
   }
 
   // ai_run:超長輸出截尾(保留結尾)

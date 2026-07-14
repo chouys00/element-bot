@@ -68,7 +68,7 @@
   </div>
 
   <details class="panel" id="dryPanel">
-    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽關鍵字/房間/專案健檢(免費即時);use_llm 規則會自動跑 LLM 二次判斷(小額 quota)顯示真實觸發結果;skill-dispatch 可再「實跑」派 claude 進專案確認</summary>
+    <summary style="cursor:pointer;color:#9aa">🧪 規則試跑 — 貼一段訊息,預覽關鍵字/房間/專案健檢(免費即時);use_llm 規則會自動跑 LLM 二次判斷(小額 quota)顯示真實觸發結果;skill-dispatch 可再「實跑」派 Codex 進專案確認</summary>
     <div class="row" style="margin-top:12px"><label>訊息文字</label><input type="text" id="dry_text" placeholder="例如:幫我把背景改成紅色" /></div>
     <div class="row"><label>房間</label><select id="dry_room"></select></div>
     <div class="bar"><button class="abtn primary" id="dryBtn">試跑</button><span class="hint">房間選「全部房間」= 不限定房間,只看關鍵字/啟用(等於假設在該規則的目標房間內)</span></div>
@@ -220,11 +220,11 @@ function renderDryResult(results) {
         : `<code>${esc(r.command)}</code>`;
     }
     // 實跑按鈕(僅 skill-dispatch;訊息不會觸發此規則或專案不健康時停用,避免白跑/白花 quota)。
-    // 成本標明在 title:實跑會派 claude 真的進專案讀 .claude/skills、理解專案結構(跟真執行的「讀懂」那段一樣貴,
+    // 成本標明在 title:實跑會派 Codex 真的進專案讀 目標專案自身的 instructions/skills、理解專案結構(跟真執行的「讀懂」那段一樣貴,
     // 只省「動手做+verify」),不是 judge 那種單輪小額分類,故按需、不隨試跑自動觸發。
     const wouldFire = r.triggers || r.needs_llm;
     const probeDisabled = !wouldFire || !pcHealthy;
-    const probeTitle = !wouldFire ? "這則訊息不會觸發此規則" : (!pcHealthy ? "專案路徑不健康,無法實跑" : "派 claude 進專案唯讀確認,約需數十秒,quota 消耗中等(等同讀懂專案,比真執行省的只是「動手做+verify」那段)");
+    const probeTitle = !wouldFire ? "這則訊息不會觸發此規則" : (!pcHealthy ? "專案路徑不健康,無法實跑" : "派 Codex 進專案唯讀確認,約需數十秒,quota 消耗中等(等同讀懂專案,比真執行省的只是「動手做+verify」那段)");
     const probeCell = r.task === "skill-dispatch"
       ? `<button class="abtn" data-probe="${i}" data-rule="${esc(r.name)}" title="${esc(probeTitle)}" ${probeDisabled ? "disabled" : ""}>🔌 實跑(中量 quota)</button>`
       : `<span class="muted">—</span>`;
@@ -289,12 +289,12 @@ function wireToggleBtn() {
   });
 }
 
-// 實跑連通測試:對單條 skill-dispatch 規則,用試跑訊息跑 judge + 派 claude 唯讀探測(花一點 quota)。
+// 實跑連通測試:對單條 skill-dispatch 規則,用試跑訊息跑 judge + 派 Codex 唯讀探測(花一點 quota)。
 async function doProbe(index, ruleName) {
   const body = document.getElementById("dry_text").value;
   const out = document.getElementById("probeResult");
   if (!body.trim()) { out.innerHTML = `<span class="err">請先在上方輸入訊息文字,再實跑。</span>`; return; }
-  out.innerHTML = probePanel(`🔌 實跑探測「${esc(ruleName)}」中…`, `<span class="muted">派 claude 進專案唯讀確認,約需數十秒,請稍候。</span>`);
+  out.innerHTML = probePanel(`🔌 實跑探測「${esc(ruleName)}」中…`, `<span class="muted">派 Codex 進專案唯讀確認,約需數十秒,請稍候。</span>`);
   wireToggleBtn();
   try {
     const res = await fetch("/api/rules/probe", { method: "POST", body: JSON.stringify({ index, body }) });
@@ -313,7 +313,7 @@ async function doProbe(index, ruleName) {
 function renderProbeResult(d, ruleName) {
   const out = document.getElementById("probeResult");
   if (d.blocked) {
-    out.innerHTML = probePanel(`🔌 ${esc(ruleName)}`, `<span class="err">專案路徑不可用:${esc((d.project_check && d.project_check.detail) || "")},已跳過(不浪費 claude 呼叫)</span>`);
+    out.innerHTML = probePanel(`🔌 ${esc(ruleName)}`, `<span class="err">專案路徑不可用:${esc((d.project_check && d.project_check.detail) || "")},已跳過(不浪費 Codex 呼叫)</span>`);
     wireToggleBtn();
     return;
   }
@@ -327,9 +327,9 @@ function renderProbeResult(d, ruleName) {
   let body = `<div>LLM 判定:${d.trigger ? `<span class="ok">會觸發</span>` : `<span class="err">不觸發</span>`}　抽取參數:${esc(paramStr)}</div>`;
   body += `<div style="margin-top:4px">實際送出指令:<code>${esc(d.rendered_command)}</code></div>`;
   if (d.trigger && d.probe) {
-    body += `<div style="margin-top:6px" class="hint">專案(claude 唯讀)回報:</div><pre>${esc(d.probe.output)}</pre>`;
+    body += `<div style="margin-top:6px" class="hint">專案(Codex 唯讀)回報:</div><pre>${esc(d.probe.output)}</pre>`;
   } else if (!d.trigger) {
-    body += `<div class="muted" style="margin-top:6px">LLM 判定不觸發,未派 claude 探測。</div>`;
+    body += `<div class="muted" style="margin-top:6px">LLM 判定不觸發,未派 Codex 探測。</div>`;
   }
   out.innerHTML = probePanel(`🔌 實跑結果:${esc(ruleName)}`, body);
   wireToggleBtn();

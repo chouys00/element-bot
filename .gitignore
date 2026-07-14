@@ -4,9 +4,8 @@ storage/
 output/
 *.log
 .idea/
-# .claude 下只提交 skills(要跟著 repo 到部署機器),settings/launch 等本機設定不提交。
-.claude/*
-!.claude/skills/
+# Claude Code 的本機設定與舊版 skills 不再屬於現行架構；保留於 Git 歷史即可。
+.claude/
 queue/
 # rules.json 是隨部署/機器而異的營運設定(房間 ID、專案絕對路徑、啟停狀態),
 # 由 dashboard 維護、不入版控。範本見 config/rules.example.json。

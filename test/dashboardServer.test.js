@@ -25,7 +25,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const rulesPath = path.join(root, "rules.json");
   fs.writeFileSync(rulesPath, JSON.stringify([{ name: "改顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]), "utf8");
 
-  // 假 judge:body 含「觸發」→ trigger true 並抽出固定連結,否則 trigger false。供 /api/rules/judge 測試,不打真 claude。
+  // 假 judge:body 含「觸發」→ trigger true 並抽出固定連結,否則 trigger false。供 /api/rules/judge 測試,不打真 Codex。
   const fakeJudge = async (_rule, body) => ({ trigger: String(body).includes("觸發"), params: { 連結: "https://example.com/x" } });
   const server = createServer({ queueDir, storageDir, outputFile, rulesPath, envRoomIds: ["!env:s"], judgeFn: fakeJudge });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));

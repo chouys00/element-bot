@@ -253,9 +253,9 @@ async function renderDetail() {
         ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "")
     : "";
 
-  // claude 在專案內的實際輸出(ai_run 步驟),讓「結果」不只有一行彙總。
+  // Codex 在專案內的實際輸出(ai_run 步驟),讓「結果」不只有一行彙總。
   const aiHtml = prog.aiOutput
-    ? `<div class="k" style="margin-top:8px">執行輸出 (claude)</div><pre>${esc(prog.aiOutput)}</pre>`
+    ? `<div class="k" style="margin-top:8px">執行輸出 (Codex)</div><pre>${esc(prog.aiOutput)}</pre>`
     : "";
 
   // LLM 判斷紀錄(judging/judged):判斷中/不觸發/失敗與失敗原因。

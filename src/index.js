@@ -79,7 +79,7 @@ async function main() {
     console.warn("[element-bot] 無法監看規則檔,熱載入停用(仍可手動重啟套用):", e.message);
   }
 
-  // 用 claude CLI(headless）做 LLM 判斷,吃目前登入帳號的 quota,不需 API key。
+  // 用 Codex CLI(headless）做 LLM 判斷,吃目前登入帳號的 quota,不需 API key。
   // CLI 不存在/逾時/非零 exit 會丟錯,被 trigger 的 per-rule try/catch 接住 → 該則不觸發,bot 照常。
   const judgeFn = async (rule, message) => judge(rule, message);
 
