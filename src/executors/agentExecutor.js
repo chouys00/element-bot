@@ -65,6 +65,7 @@ async function agentExecutor(task, ctx) {
     }
   }
   if (summary) emit(summary);
+  return summary;
 }
 
 module.exports = { agentExecutor, appendLog, readLogLines, STEP_LABELS };

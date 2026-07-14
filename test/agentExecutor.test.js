@@ -30,11 +30,12 @@ function fakeHandlers(calls) {
   {
     const q = freshQueue();
     const calls = [];
-    await agentExecutor({ task: "t" }, { queueDir: q, id: "j1", logger: silentLogger, handlers: fakeHandlers(calls) });
+    const result = await agentExecutor({ task: "t" }, { queueDir: q, id: "j1", logger: silentLogger, handlers: fakeHandlers(calls) });
     ok("四步都跑", calls.join(",") === "prepare,ai_run,verify,summarize");
     const lines = readLogLines(q, "j1");
     ok("有 steps 宣告", lines.some((o) => Array.isArray(o.steps)));
     ok("有總結 OK", lines.some((o) => o.status === "OK" && o.summary === "done"));
+    ok("executor 回傳 summarize 結果", result && result.status === "OK" && result.summary === "done");
     const st = readState(path.join(q, "work", "j1"));
     ok("state 全 ok", st && Object.values(st.steps).every((v) => v === "ok"));
     fs.rmSync(q, { recursive: true, force: true });

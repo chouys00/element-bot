@@ -48,6 +48,23 @@ function writePending(queueDir, name, obj) {
     fs.rmSync(q, { recursive: true, force: true });
   }
 
+  for (const status of ["blocked", "review", "failed"]) {
+    const q = freshQueue();
+    const f = writePending(q, `${status}.json`, { rule: "r", task: "t", params: {} });
+    const notes = [];
+    const res = await processOne(f, {
+      queueDir: q,
+      executor: async () => ({ queueStatus: status, summary: status }),
+      logger: silentLogger,
+      notify: async (info) => notes.push(info),
+    });
+    ok(`結構化 ${status} 回傳相同狀態`, res === status);
+    ok(`結構化 ${status} 移到對應目錄`, fs.existsSync(path.join(q, status, `${status}.json`)));
+    ok(`結構化 ${status} 通知狀態一致`, notes.length === 1 && notes[0].status === status);
+    ok(`結構化 ${status} 不寫基礎設施錯誤檔`, !fs.existsSync(path.join(q, status, `${status}.json.error.txt`)));
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
   {
     const q = freshQueue();
     const p = path.join(q, "pending", "c.json");

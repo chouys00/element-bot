@@ -20,11 +20,10 @@ async function safeNotify(deps, info) {
 
 // 處理單一 pending 任務檔:讀取 → 移 processing/ → 執行 executor → 成功移 done/、失敗移 failed/。
 // deps = { queueDir, executor(task, { logger })->Promise, logger, notify?(info)->Promise }
-// 回傳 "done" | "failed"。
+// 回傳 "done" | "failed" | "blocked" | "review"。
 async function processOne(filePath, deps) {
   const { queueDir, executor, logger } = deps;
   const processingDir = path.join(queueDir, "processing");
-  const doneDir = path.join(queueDir, "done");
   const failedDir = path.join(queueDir, "failed");
   const base = path.basename(filePath);
 
@@ -45,12 +44,16 @@ async function processOne(filePath, deps) {
 
   const id = base.replace(/\.json$/, "");
   try {
-    await executor(task, { logger, queueDir, id });
-    ensureDir(doneDir);
-    fs.renameSync(processingPath, path.join(doneDir, base));
-    logger.log(`[worker] ${base} 完成 → done/`);
-    await safeNotify(deps, { queueDir, id, status: "done", task });
-    return "done";
+    const result = await executor(task, { logger, queueDir, id });
+    const status = result && result.queueStatus ? result.queueStatus : "done";
+    if (!["done", "failed", "blocked", "review"].includes(status)) {
+      throw new Error(`未知的任務結果狀態:${status}`);
+    }
+    const destDir = ensureDir(path.join(queueDir, status));
+    fs.renameSync(processingPath, path.join(destDir, base));
+    logger.log(`[worker] ${base} 執行結束 → ${status}/`);
+    await safeNotify(deps, { queueDir, id, status, task, result });
+    return status;
   } catch (err) {
     ensureDir(failedDir);
     const dest = path.join(failedDir, base);
