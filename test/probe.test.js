@@ -1,11 +1,30 @@
 "use strict";
 const assert = require("assert");
-const { probeRule } = require("../src/probe");
+const { runProbe, probeRule } = require("../src/probe");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
 
 (async () => {
+  {
+    let seenPrompt = "";
+    let seenDir = "";
+    const result = await runProbe("D:\\P", "/do work", {
+      runner: async (prompt, projectDir) => {
+        seenPrompt = prompt;
+        seenDir = projectDir;
+        return { ok: true, output: "ok" };
+      },
+    });
+    ok("probe 將目標專案作為 cwd", seenDir === "D:\\P");
+    ok("probe 保留收到的 command", seenPrompt.includes("/do work"));
+    ok("probe 交由目標專案自身設定決定流程", seenPrompt.includes("目標專案自身"));
+    for (const forbidden of [".claude/skills", ".agents/skills", ".cursor/skills"]) {
+      ok(`probe 不指定 ${forbidden}`, !seenPrompt.includes(forbidden));
+    }
+    ok("probe 回傳 runner 結果", result.output === "ok");
+  }
+
   // use_llm 規則:judge 抽參 → 填指令 → 呼叫探測
   {
     let probedWith = null;

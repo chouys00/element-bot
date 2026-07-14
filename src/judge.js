@@ -1,8 +1,7 @@
 "use strict";
-// 用 claude CLI(headless `claude -p`)判斷「命中關鍵字的訊息是否真的該觸發」並抽參數。
-// schema / prompt / parse 為純函式以利測試;judge() 串接它們並 spawn 子程序。
-// 改用 CLI 後不需要 ANTHROPIC_API_KEY,而是吃目前登入帳號的 quota。
-const { spawn } = require("child_process");
+// 使用 Codex CLI 判斷「命中關鍵字的訊息是否真的該觸發」並抽取參數。
+// schema / prompt / parse 維持純函式；所有 CLI 細節集中在 codexRunner。
+const { runCodex } = require("./codexRunner");
 
 // 依規則的 extract 欄位組出回傳 JSON 的 schema。
 // 結構化輸出的 schema 仍嵌進 prompt,讓模型知道要回傳的形狀。
@@ -72,58 +71,24 @@ function parseJudgeText(text) {
   return { trigger: parsed.trigger, params: parsed.params || {} };
 }
 
-// spawn `claude -p`,prompt 走 stdin(避免命令列跳脫/注入問題)。
-// 非零 exit code、spawn error 或 timeout 都會 reject。
-// timeout 預設 120s(可用 JUDGE_TIMEOUT_MS 覆寫):worker 同時在跑 ai_run 時機器很忙,
-// CLI 冷啟動+排隊常超過 60s,太短會讓「同一句話有時觸發有時沒反應」。
-function runClaude(prompt, opts = {}) {
-  const timeoutMs = opts.timeoutMs || parseInt(process.env.JUDGE_TIMEOUT_MS || "120000", 10);
-  return new Promise((resolve, reject) => {
-    // Windows 上 claude 是 .cmd,需要 shell 才能解析;args 固定為 ["-p"],無外部輸入,無注入風險。
-    const child = spawn("claude", ["-p"], { shell: process.platform === "win32" });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const finish = (fn, arg) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      fn(arg);
-    };
-    const timer = setTimeout(() => {
-      child.kill();
-      finish(reject, new Error(`claude CLI timeout(${timeoutMs}ms)`));
-    }, timeoutMs);
-    child.on("error", (err) => finish(reject, err));
-    child.stdout.on("data", (d) => { stdout += d; });
-    child.stderr.on("data", (d) => { stderr += d; });
-    child.on("close", (code) => {
-      if (code === 0) finish(resolve, stdout);
-      else {
-        // claude CLI 的錯誤(例如認證失敗 401)常印在 stdout 而非 stderr,
-        // 只回報 stderr 會讓 dashboard 顯示「exit 1:」後面空白、查不出原因。
-        // 兩者都帶上,優先顯示有內容的那個。
-        const detail = [stderr.trim(), stdout.trim()].filter(Boolean).join(" | ") || "(無輸出)";
-        finish(reject, new Error(`claude CLI exit ${code}: ${detail}`));
-      }
-    });
-    child.stdin.write(prompt);
-    child.stdin.end();
-  });
-}
-
-// 串接:組 prompt → 跑 claude CLI → 解析。不再需要 client。
-// opts.run 可注入替代執行器以利測試(預設真正 spawn claude)。
+// 串接：組 prompt → 跑 Codex CLI → 解析。opts.run 可注入替代執行器以利測試。
 // opts.retries(預設 1):CLI 偶發 timeout / 非零 exit / 輸出不合 schema 時重試一次,
 // 降低「同一句話間歇性沒觸發」;仍失敗才丟錯(由呼叫端記錄)。
 async function judge(rule, message, opts = {}) {
-  const run = opts.run || runClaude;
+  const run = opts.run || runCodex;
   const retries = opts.retries != null ? opts.retries : 1;
   const prompt = buildPrompt(rule, message);
+  const { run: _run, retries: _retries, ...runnerOptions } = opts;
+  const runOptions = {
+    ...runnerOptions,
+    mode: "judge",
+    timeoutMs: opts.timeoutMs || parseInt(process.env.JUDGE_TIMEOUT_MS || "120000", 10),
+    outputSchema: buildSchema(rule),
+  };
   let lastErr;
   for (let i = 0; i <= retries; i++) {
     try {
-      return parseJudgeText(await run(prompt, opts));
+      return parseJudgeText(await run(prompt, runOptions));
     } catch (err) {
       lastErr = err;
     }
@@ -136,7 +101,6 @@ module.exports = {
   buildUserText,
   buildPrompt,
   parseJudgeText,
-  runClaude,
   judge,
   SYSTEM,
 };

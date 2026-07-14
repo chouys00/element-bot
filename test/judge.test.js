@@ -62,12 +62,14 @@ throws("trigger 非布林丟錯", () => parseJudgeText('{"params":{}}'));
 
   // run 收到的就是 buildPrompt 的內容
   let seenPrompt = null;
+  let seenOptions = null;
   await judge(
     { intent: "要部署才觸發", extract: ["環境"] },
     "幫我部署到 prod",
-    { run: async (p) => { seenPrompt = p; return '{"trigger":false,"params":{}}'; } }
+    { run: async (p, options) => { seenPrompt = p; seenOptions = options; return '{"trigger":false,"params":{}}'; } }
   );
   ok("judge 把 buildPrompt 結果交給 run", seenPrompt === buildPrompt({ intent: "要部署才觸發", extract: ["環境"] }, "幫我部署到 prod"));
+  ok("judge 把原生 output schema 交給 Codex runner", seenOptions.outputSchema.properties.params.required[0] === "環境");
 
   // run 失敗(CLI 非零 exit / timeout)→ judge 丟出(重試也失敗)
   await rejects("run 失敗時 judge 丟出", () => judge(
