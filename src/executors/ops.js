@@ -1,6 +1,7 @@
 "use strict";
 const { spawnSync } = require("child_process");
 const { runCodex: invokeCodex } = require("../codexRunner");
+const { TASK_RESULT_SCHEMA } = require("./taskResult");
 
 // 來源須在 git 控制下且無未提交改動(改檔任務的安全網)。
 function gitClean(srcDir) {
@@ -42,7 +43,7 @@ function gitCommitsSince(srcDir, baseHead) {
 
 // 執行期 provider 邊界只存在於 codexRunner；ops 不自行組合 CLI 參數。
 function runCodex(prompt, projectDir) {
-  return invokeCodex(prompt, { mode: "execute", cwd: projectDir });
+  return invokeCodex(prompt, { mode: "execute", cwd: projectDir, outputSchema: TASK_RESULT_SCHEMA });
 }
 
 // 跑 verify 腳本,從輸出解析 errors=/warnings=。

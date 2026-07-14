@@ -18,29 +18,31 @@ function freshQueue() {
 // 用真實通用 taskDef；sourceDir 只組路徑、不真存取，假 ops 不會碰磁碟。
 const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", command: "把背景改成紅色" };
 const findSummary = (lines) => lines.find((o) => typeof o.status === "string" && !o.step && !o.steps);
+const codexResult = JSON.stringify({
+  status: "success", summary: "完成", changes: ["index.html"],
+  validation: [], commits: [], warnings: [],
+});
 
 (async () => {
-  // 全新任務跑完整鏈(真實 handlers + 假 ops):Codex 改本體 → git 有改動 → summary OK
+  // 全新任務跑完整鏈(真實 handlers + 假 ops):Codex 結構化結果直接驅動 summary
   {
     const q = freshQueue();
     const calls = [];
     const ops = {
-      gitClean: () => calls.push("git"),
-      runCodex: () => calls.push("codex"),
-      runVerify: () => ({ errors: 0, warnings: 0 }),
-      gitChanged: () => ["index.html"],
+      gitHead: () => { calls.push("head"); return "abc"; },
+      runCodex: () => { calls.push("codex"); return codexResult; },
     };
     await agentExecutor(TASK, { queueDir: q, id: "f1", logger: silentLogger, ops });
-    ok("完整鏈呼叫順序 git,codex(不複製)", calls.join(",") === "git,codex");
+    ok("完整鏈只觀測 HEAD 後派 Codex", calls.join(",") === "head,codex");
     const summary = findSummary(readLogLines(q, "f1"));
-    ok("summary OK", summary && summary.status === "OK");
+    ok("summary success", summary && summary.status === "success");
     ok("summary 含改動檔", summary && summary.produced.includes("index.html"));
     const st = readState(path.join(q, "work", "f1"));
     ok("state 全 ok", st && Object.values(st.steps).every((v) => v === "ok"));
     fs.rmSync(q, { recursive: true, force: true });
   }
 
-  // 中斷續跑:state 預seed prepare ok → 跳過 prepare(不再 gitClean),ai_run 重跑 Codex
+  // 中斷續跑:state 預seed prepare ok → 跳過 prepare,ai_run 重跑 Codex
   {
     const q = freshQueue();
     const workDir = path.join(q, "work", "f2");
@@ -49,15 +51,13 @@ const findSummary = (lines) => lines.find((o) => typeof o.status === "string" &&
       JSON.stringify({ id: "f2", steps: { prepare: "ok", ai_run: "pending", verify: "pending", summarize: "pending" }, attempt: 1 }), "utf8");
     const calls = [];
     const ops = {
-      gitClean: () => calls.push("git"),
-      runCodex: () => calls.push("codex"),
-      runVerify: () => ({ errors: 0 }),
-      gitChanged: () => ["index.html"],
+      gitHead: () => { calls.push("head"); return "abc"; },
+      runCodex: () => { calls.push("codex"); return codexResult; },
     };
     await agentExecutor(TASK, { queueDir: q, id: "f2", logger: silentLogger, ops });
-    ok("續跑跳過 prepare(不再 gitClean)", !calls.includes("git"));
+    ok("續跑跳過 prepare(不再讀 HEAD)", !calls.includes("head"));
     ok("續跑重跑 ai_run(codex 被呼叫)", calls.includes("codex"));
-    ok("續跑仍出 OK summary", (findSummary(readLogLines(q, "f2")) || {}).status === "OK");
+    ok("續跑仍出 success summary", (findSummary(readLogLines(q, "f2")) || {}).status === "success");
     fs.rmSync(q, { recursive: true, force: true });
   }
 
