@@ -2,112 +2,73 @@
 const os = require("os");
 const path = require("path");
 
-// 每個 skill 一筆任務定義。新增 skill = 在此加一筆,不動 worker/bot/dashboard。
-// 介面(「直接改本體」模型:claude 在真實專案內讀該專案的 SKILL.md 執行,不複製、不 commit):
-//   sourceDir(task) -> 目標專案絕對路徑(claude 的工作目錄;改動直接落在這)
-//   prompt(task)    -> 餵給 claude -p 的無人值守指示(叫 claude 讀該專案的 SKILL.md 並執行)
-//   verifyArgs(src) -> ["py","-3",script,src,locale] 之類;null=不 verify(交由專案自理)
-//   needsReview     -> 完成後要人補/核對的提示
-// 成敗一律由 git 是否有改動判斷,不再宣告預期產物。
-const FTL_ROOT = process.env.NSL_FTL_ROOT || "D:/GB/PC/ftl/ftl";
-const I18N_SKILL_DIR = process.env.NSL_SKILL_DIR || path.join(FTL_ROOT, ".cursor/skills/template-i18n-inject");
-
-// demo-skill 用:本地專案根目錄(預設放系統暫存區,避免汙染 repo / 巢狀 git)。
+// element-bot 只定義「到哪個專案、交付什麼指令」，不判斷目標專案的 skill 體系。
+// sourceDir(task) -> Codex 的工作目錄
+// prompt(task)    -> 交給 Codex 的任務與安全邊界
+// verifyArgs(src) -> 選填的外部驗證指令；目前通用任務不使用
 const DEMO_ROOT = process.env.NSL_DEMO_ROOT || path.join(os.tmpdir(), "element-bot-demo");
 
 const DEFS = {
-  "i18n-skill": {
-    sourceDir: (task) => {
-      const site = String((task.params && task.params["站點"]) || "");
-      const resolved = path.resolve(FTL_ROOT, site);
-      const root = path.resolve(FTL_ROOT);
-      if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-        throw new Error("站點路徑逸出 FTL_ROOT:" + site);
-      }
-      return resolved;
-    },
-    prompt: () => [
-      "你是無人值守的自動執行者,必須全自動完成,禁止發問或停下來等待確認。",
-      "所有原需使用者確認/Plan 同意/對照表確認/dry-run 確認的環節,一律自動採用文件建議做法並續行。",
-      "站點目錄就是你的當前工作目錄,所有產出與修改只能發生在此目錄(及其子目錄)內。",
-      "請完整讀取並嚴格遵照 " + I18N_SKILL_DIR + "/SKILL.md 及其 reference/ 全部,",
-      "依 SKILL.md 自行判斷單/多語系,把中文文案轉成 data-i18n 標記、產生 i18n/<語系>.json。",
-      "安全紅線:只准讀寫當前工作目錄(及其子目錄);不可修改當前目錄以外任何檔案。產完翻譯檔即可,不需自行 verify。",
-    ].join(""),
-    verifyArgs: (srcDir) => [process.env.NSL_PY || "py", "-3", path.join(I18N_SKILL_DIR, "scripts", "verify_i18n.py"), srcDir, "zh_CN"],
-    needsReview: ["請人工核對文案正確性(verify 只驗結構不驗文意)", "套用到正式站前再次確認"],
-  },
-
-  // 示範「目標專案自帶 SKILL.md、由 claude 讀後直接改本體」的 skill。
-  // element-bot 只派發:把 claude 帶進真實專案,叫它讀 ./SKILL.md 並照做,不複製、不 commit。
-  // 目標專案(sample-app)是個全白前端,其 SKILL.md 指示「把背景改成使用者要的顏色」。
-  // verifyArgs:null 故跳過外部 verify;成敗由 git 是否有改動判斷。
+  // 本機開發 fixture：目標目錄自帶 SKILL.md，不代表正式專案必須採用此結構。
   "demo-skill": {
     sourceDir: (task) => {
-      const proj = String((task.params && task.params["專案"]) || "sample-app");
-      const resolved = path.resolve(DEMO_ROOT, proj);
+      const project = String((task.params && task.params["專案"]) || "sample-app");
+      const resolved = path.resolve(DEMO_ROOT, project);
       const root = path.resolve(DEMO_ROOT);
       if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-        throw new Error("專案路徑逸出 DEMO_ROOT:" + proj);
+        throw new Error("專案路徑逸出 DEMO_ROOT:" + project);
       }
       return resolved;
     },
     prompt: (task) => {
-      const instruction = String((task && task.source && task.source.body) || "把背景改成淡藍色");
+      const instruction = String((task && task.source && task.source.body) || "依 SKILL.md 完成任務");
       return [
-        "你是無人值守的自動執行者,必須全自動完成,禁止發問或停下來等待確認。",
-        "你的當前工作目錄就是一個前端專案,所有讀寫只能發生在此目錄(及其子目錄)內。",
-        "請完整讀取當前目錄的 SKILL.md,並嚴格依照其指示完成這次任務。",
-        "使用者透過聊天室下達的指令是:「" + instruction + "」。",
-        "安全紅線:只准讀寫當前工作目錄(及其子目錄),不可碰此目錄以外任何檔案。",
-        "版本控制:要不要 commit 完全依 SKILL.md 的明確指示;文件沒有明確要求 commit 就預設不 commit,改動保留在工作區交外部檢視。絕不自作主張 commit / push / tag / reset。",
-      ].join("");
+        "你是自動化執行代理，工作目錄是這次任務唯一允許修改的範圍。",
+        "請完整讀取當前目錄的 SKILL.md，並嚴格依照其指示完成任務。",
+        "使用者指令：" + instruction,
+        "安全紅線：不得讀寫工作目錄之外的檔案，不得修改其他專案。",
+        "版本控制：只有 SKILL.md 明確要求時才能 commit；否則預設不 commit。絕不自作主張 push、tag 或 reset。",
+      ].join("\n");
     },
     verifyArgs: null,
-    needsReview: ["確認背景色是否如預期(開 index.html 檢視)", "正式套用前再次確認"],
+    needsReview: ["確認執行結果符合預期", "正式套用前再次確認"],
   },
 
-  // 通用任務(「計程車」模型):路徑與指令都由規則帶進來(task.project_path / task.command),
-  // 任務定義本身固定,故新增專案/skill 只要加規則、不必改程式碼。
-  //   sourceDir - 直接用 task.project_path(任意絕對路徑,不做 root 逸出檢查;
-  //               存在性與 git 乾淨由 executor 的 prepare(gitClean)把關)
-  //   prompt    - 安全前言 + 把 command 當「使用者輸入」餵給 claude,讓它用專案 .claude/skills 識別執行
-  //   verifyArgs- null:成敗由 git 是否有改動判斷,驗證交由 skill 自理
+  // 正式通用分派：目標專案如何解讀 instructions/skills 完全由該專案與 Codex 決定。
   "skill-dispatch": {
     sourceDir: (task) => {
-      const p = String((task && task.project_path) || "");
-      if (!p) throw new Error("skill-dispatch 缺 project_path(規則須指定專案絕對路徑)");
-      return path.resolve(p);
+      const projectPath = String((task && task.project_path) || "");
+      if (!projectPath) throw new Error("skill-dispatch 缺 project_path(規則須指定專案絕對路徑)");
+      return path.resolve(projectPath);
     },
     prompt: (task) => {
       const command = String((task && task.command) || "");
       return [
-        "你是無人值守的自動執行者,必須全自動完成,禁止發問或停下來等待確認。",
-        "所有原需使用者確認/選擇/dry-run 的環節,一律自動採用預設或文件建議做法並續行。",
-        "你的當前工作目錄就是一個專案,所有讀寫只能發生在此目錄(及其子目錄)內。",
-        "請把下面這句話當成使用者在本專案中的輸入,用本專案的 skill(.claude/skills)識別並執行對應流程:",
-        "「" + command + "」",
-        "安全紅線:只准讀寫當前工作目錄(及其子目錄),不可碰此目錄以外任何檔案。",
-        "版本控制:要不要 commit 完全依該 skill 文件的明確指示;文件沒有明確要求 commit 就預設不 commit,改動保留在工作區交外部檢視。絕不自作主張 commit / push / tag / reset。",
-      ].join("");
+        "你是自動化執行代理，工作目錄是這次任務唯一允許修改的目標專案。",
+        "請把下方 command 視為使用者在目標專案中提出的要求。",
+        "依目標專案自身的 instructions 與可用 skills 判斷並執行正確流程；element-bot 不指定其位置或工具體系。",
+        "command：" + command,
+        "安全紅線：不得讀寫工作目錄之外的檔案，不得修改其他專案。",
+        "版本控制：只有目標專案 instructions 或採用的 skill 明確要求時才能 commit；否則預設不 commit。絕不自作主張 push、tag 或 reset。",
+      ].join("\n");
     },
     verifyArgs: null,
-    needsReview: ["確認 skill 執行結果符合預期", "正式套用前再次確認"],
+    needsReview: ["確認目標專案流程與執行結果符合預期", "正式套用前再次確認"],
   },
 };
 
 function getTaskDef(name) {
   const def = DEFS[name];
-  if (!def) throw new Error("查無任務定義:" + name);
+  if (!def) throw new Error("未知任務定義:" + name);
   return def;
 }
 
-// 列出所有可用的 task 名稱,供 dashboard 規則編輯的 task 下拉選單用。
 function taskNames() {
   return Object.keys(DEFS);
 }
 
-// 各 skill 真實專案的根目錄,供 dashboard 的「開啟專案」白名單檢查用。
-const PROJECT_ROOTS = [FTL_ROOT, DEMO_ROOT];
+// dashboard 的「開啟專案」白名單只保留 element-bot 自己管理的 demo root。
+// skill-dispatch 的外部專案仍由既有 projectCheck 與 executor 安全檢查處理。
+const PROJECT_ROOTS = [DEMO_ROOT];
 
 module.exports = { getTaskDef, PROJECT_ROOTS, taskNames };

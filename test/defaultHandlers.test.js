@@ -13,7 +13,7 @@ const noop = () => {};
   // prepare:唯讀檢查本體 git 乾淨(呼叫 gitClean),不複製
   {
     const calls = [];
-    const ops = { gitClean: () => calls.push("git"), runClaude: () => calls.push("claude"), runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => calls.push("git"), runCodex: () => calls.push("codex"), runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     await h.prepare({ task: { task: "demo-skill" }, emit: noop, shared: {} });
     ok("prepare 只 gitClean、不複製", calls.join(",") === "git");
@@ -22,7 +22,7 @@ const noop = () => {};
   // ai_run:把 claude 帶進真實專案,prompt 指向 SKILL.md、cwd 為目標專案
   {
     let prompt = null, cwd = null;
-    const ops = { gitClean: () => {}, runClaude: (p, dir) => { prompt = p; cwd = dir; }, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, runCodex: (p, dir) => { prompt = p; cwd = dir; }, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     await h.ai_run({ task: { task: "demo-skill", source: { body: "把背景改成紅色" } }, emit: noop, shared: {} });
     ok("ai_run 呼叫 claude", prompt !== null);
@@ -33,7 +33,7 @@ const noop = () => {};
   // verify:verifyArgs null → 直接 errors:0,不呼叫 runVerify
   {
     let verifyCalled = false;
-    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => { verifyCalled = true; return { errors: 0 }; }, gitChanged: () => ["index.html"] };
+    const ops = { gitClean: () => {}, runCodex: () => {}, runVerify: () => { verifyCalled = true; return { errors: 0 }; }, gitChanged: () => ["index.html"] };
     const h = make(ops);
     const shared = {};
     await h.verify({ task: { task: "demo-skill" }, emit: noop, shared });
@@ -42,7 +42,7 @@ const noop = () => {};
 
   // summarize:本體有改動 + verify errors=0 → OK
   {
-    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => ["index.html"] };
+    const ops = { gitClean: () => {}, runCodex: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => ["index.html"] };
     const h = make(ops);
     const shared = {};
     await h.verify({ task: { task: "demo-skill" }, emit: noop, shared });
@@ -53,27 +53,16 @@ const noop = () => {};
 
   // summarize:本體無改動 → ERROR(SKILL 沒做事)
   {
-    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, runCodex: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     const sum = await h.summarize({ task: { task: "demo-skill" }, emit: noop, shared: {} });
     ok("無改動 → ERROR", sum.status === "ERROR");
   }
 
-  // summarize:有改動但 verify errors>0 → NEEDS(用 i18n-skill,有 verifyArgs)
-  {
-    const ops = { gitClean: () => {}, runClaude: () => {}, runVerify: () => ({ errors: 3, warnings: 0 }), gitChanged: () => ["i18n/zh_CN.json"] };
-    const h = make(ops);
-    const task = { task: "i18n-skill", params: { 站點: "siteA" } };
-    const shared = {};
-    await h.verify({ task, emit: noop, shared });
-    const sum = await h.summarize({ task, emit: noop, shared });
-    ok("verify errors>0 → NEEDS", sum.status === "NEEDS");
-  }
-
   // prepare:記下起跑 HEAD 到 workDir/base.json(供 summarize 偵測自行 commit)
   {
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dh-"));
-    const ops = { gitClean: () => {}, gitHead: () => "abc123", runClaude: () => "", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, gitHead: () => "abc123", runCodex: () => "", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     await h.prepare({ workDir, task: { task: "demo-skill" }, emit: noop, shared: {} });
     const base = JSON.parse(fs.readFileSync(path.join(workDir, "base.json"), "utf8"));
@@ -83,7 +72,7 @@ const noop = () => {};
   // ai_run:claude 的 stdout 進 log(emit ai_output)
   {
     const emitted = [];
-    const ops = { gitClean: () => {}, runClaude: () => "我改了 index.html 的背景色", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, runCodex: () => "我改了 index.html 的背景色", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     await h.ai_run({ task: { task: "demo-skill", source: { body: "x" } }, emit: (o) => emitted.push(o), shared: {} });
     const out = emitted.find((o) => typeof o.ai_output === "string");
@@ -94,7 +83,7 @@ const noop = () => {};
   {
     const emitted = [];
     const long = "x".repeat(9000) + "結尾";
-    const ops = { gitClean: () => {}, runClaude: () => long, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, runCodex: () => long, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
     await h.ai_run({ task: { task: "demo-skill", source: { body: "x" } }, emit: (o) => emitted.push(o), shared: {} });
     const out = emitted.find((o) => typeof o.ai_output === "string");
@@ -106,7 +95,7 @@ const noop = () => {};
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dh-"));
     fs.writeFileSync(path.join(workDir, "base.json"), JSON.stringify({ head: "base00" }), "utf8");
     const ops = {
-      gitClean: () => {}, runClaude: () => "", runVerify: () => ({ errors: 0 }),
+      gitClean: () => {}, runCodex: () => "", runVerify: () => ({ errors: 0 }),
       gitChanged: () => [], // 工作區乾淨(改動被 commit 掉了)
       gitHead: () => "new111",
       gitCommitsSince: () => ({ commits: ["new111 test: 優惠辦理域名更換"], files: ["src/a.js", "src/b.js"] }),
@@ -124,7 +113,7 @@ const noop = () => {};
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dh-"));
     fs.writeFileSync(path.join(workDir, "base.json"), JSON.stringify({ head: "base00" }), "utf8");
     const ops = {
-      gitClean: () => {}, runClaude: () => "", runVerify: () => ({ errors: 0 }),
+      gitClean: () => {}, runCodex: () => "", runVerify: () => ({ errors: 0 }),
       gitChanged: () => [], gitHead: () => "base00", gitCommitsSince: () => ({ commits: [], files: [] }),
     };
     const h = make(ops);

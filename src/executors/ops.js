@@ -1,6 +1,6 @@
 "use strict";
-const fs = require("fs");
 const { spawnSync } = require("child_process");
+const { runCodexSync } = require("../codexRunner");
 
 // 來源須在 git 控制下且無未提交改動(改檔任務的安全網)。
 function gitClean(srcDir) {
@@ -40,17 +40,9 @@ function gitCommitsSince(srcDir, baseHead) {
   return { commits, files };
 }
 
-// 在專案目錄(本體)內跑 headless claude;非零 exit 丟錯。回傳 stdout(進任務 log 供詳情顯示)。
-function runClaude(prompt, projectDir) {
-  const r = spawnSync("claude", ["--dangerously-skip-permissions", "-p"], {
-    input: prompt,
-    cwd: projectDir, encoding: "utf8",
-    shell: process.platform === "win32",
-    timeout: parseInt(process.env.AI_TIMEOUT_MS || "1800000", 10),
-  });
-  if (r.error) throw r.error;
-  if (r.status !== 0) throw new Error("claude 失敗:" + String(r.stderr || "").slice(0, 200));
-  return String(r.stdout || "");
+// 執行期 provider 邊界只存在於 codexRunner；ops 不自行組合 CLI 參數。
+function runCodex(prompt, projectDir) {
+  return runCodexSync(prompt, { mode: "execute", cwd: projectDir });
 }
 
 // 跑 verify 腳本,從輸出解析 errors=/warnings=。
@@ -63,4 +55,4 @@ function runVerify(args) {
   return { errors: parseInt(m[1], 10), warnings: parseInt(m[2], 10) };
 }
 
-module.exports = { gitClean, gitChanged, gitHead, gitCommitsSince, runClaude, runVerify };
+module.exports = { gitClean, gitChanged, gitHead, gitCommitsSince, runCodex, runVerify };

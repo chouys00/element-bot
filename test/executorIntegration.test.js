@@ -26,12 +26,12 @@ const findSummary = (lines) => lines.find((o) => typeof o.status === "string" &&
     const calls = [];
     const ops = {
       gitClean: () => calls.push("git"),
-      runClaude: () => calls.push("claude"),
+      runCodex: () => calls.push("codex"),
       runVerify: () => ({ errors: 0, warnings: 0 }),
       gitChanged: () => ["index.html"],
     };
     await agentExecutor(TASK, { queueDir: q, id: "f1", logger: silentLogger, ops });
-    ok("完整鏈呼叫順序 git,claude(不複製)", calls.join(",") === "git,claude");
+    ok("完整鏈呼叫順序 git,codex(不複製)", calls.join(",") === "git,codex");
     const summary = findSummary(readLogLines(q, "f1"));
     ok("summary OK", summary && summary.status === "OK");
     ok("summary 含改動檔", summary && summary.produced.includes("index.html"));
@@ -50,28 +50,14 @@ const findSummary = (lines) => lines.find((o) => typeof o.status === "string" &&
     const calls = [];
     const ops = {
       gitClean: () => calls.push("git"),
-      runClaude: () => calls.push("claude"),
+      runCodex: () => calls.push("codex"),
       runVerify: () => ({ errors: 0 }),
       gitChanged: () => ["index.html"],
     };
     await agentExecutor(TASK, { queueDir: q, id: "f2", logger: silentLogger, ops });
     ok("續跑跳過 prepare(不再 gitClean)", !calls.includes("git"));
-    ok("續跑重跑 ai_run(claude 被呼叫)", calls.includes("claude"));
+    ok("續跑重跑 ai_run(codex 被呼叫)", calls.includes("codex"));
     ok("續跑仍出 OK summary", (findSummary(readLogLines(q, "f2")) || {}).status === "OK");
-    fs.rmSync(q, { recursive: true, force: true });
-  }
-
-  // shared.verify 由 verify 流到 summarize:errors>0 → NEEDS(用有 verifyArgs 的 i18n-skill)
-  {
-    const q = freshQueue();
-    const ops = {
-      gitClean: () => {},
-      runClaude: () => {},
-      runVerify: () => ({ errors: 2, warnings: 0 }),
-      gitChanged: () => ["i18n/zh_CN.json"],
-    };
-    await agentExecutor({ task: "i18n-skill", params: { "站點": "siteA" } }, { queueDir: q, id: "f3", logger: silentLogger, ops });
-    ok("verify errors>0 流到 summary → NEEDS", (findSummary(readLogLines(q, "f3")) || {}).status === "NEEDS");
     fs.rmSync(q, { recursive: true, force: true });
   }
 
