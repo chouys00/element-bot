@@ -193,7 +193,7 @@ function renderMsgs(msgs) {
 }
 
 // skill-dispatch 是通用「計程車」任務,task 欄本身固定不變,對分辨「這則任務送去哪」沒有資訊量。
-// 改顯示 project_path 的最後一段目錄名(如 D:\GB\PC\ftl\ftl → ftl),內建任務(demo-skill 等)維持顯示原 task 名。
+// 改顯示 project_path 的最後一段目錄名(如 D:\GB\PC\ftl\ftl → ftl)。
 function taskLabel(t) {
   if (t.task === "skill-dispatch" && t.project_path) {
     const seg = String(t.project_path).replace(/[\\/]+$/, "").split(/[\\/]/);

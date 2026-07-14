@@ -129,7 +129,7 @@ function recIn(roomId, body) {
   }
 
   // ── 房間範圍(rooms 欄位)──
-  const roomScoped = (rooms) => [{ name: "色", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms }];
+  const roomScoped = (rooms) => [{ name: "色", keywords: ["改顏色"], task: "test-task", use_llm: false, rooms }];
 
   {
     const enqueued = [];
@@ -178,7 +178,7 @@ function recIn(roomId, body) {
   {
     const enqueued = [];
     await runTriggerPipeline(recIn("!whatever:s", "幫我改顏色"), {
-      rules: [{ name: "色", keywords: ["改顏色"], task: "demo-skill", use_llm: false }], // 無 rooms 欄位
+      rules: [{ name: "色", keywords: ["改顏色"], task: "test-task", use_llm: false }], // 無 rooms 欄位
       judgeFn: async () => { throw new Error("不該被呼叫"); },
       enqueueFn: (t) => { enqueued.push(t); return "f"; },
       logger: silentLogger,
@@ -223,10 +223,10 @@ function recIn(roomId, body) {
   // ── 試跑(dryRunRules)──
   {
     const rules = [
-      { name: "顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!z:s"] },
+      { name: "顏色", keywords: ["改顏色"], task: "test-task", use_llm: false, rooms: ["!z:s"] },
       { name: "部署", keywords: ["部署"], task: "deploy-skill", use_llm: true, intent: "x", rooms: ["!a:s"] },
-      { name: "停用的", keywords: ["改顏色"], task: "demo-skill", use_llm: false, enabled: false, rooms: ["!z:s"] },
-      { name: "限房間", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!a:s"] },
+      { name: "停用的", keywords: ["改顏色"], task: "test-task", use_llm: false, enabled: false, rooms: ["!z:s"] },
+      { name: "限房間", keywords: ["改顏色"], task: "test-task", use_llm: false, rooms: ["!a:s"] },
     ];
     const res = dryRunRules("幫我改顏色", "!z:s", rules);
     const by = (n) => res.find((r) => r.name === n);
@@ -248,7 +248,7 @@ function recIn(roomId, body) {
     ok("全部房間:關鍵字命中且非 LLM → 會觸發", resAll.find((r) => r.name === "限房間").triggers === true);
     ok("全部房間:停用規則仍不觸發", resAll.find((r) => r.name === "停用的").triggers === false);
     // 沒設房間的規則:即使「全部房間」也不放行(本就永遠不觸發)。
-    const resNoRoom = dryRunRules("改顏色", undefined, [{ name: "無房間", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]);
+    const resNoRoom = dryRunRules("改顏色", undefined, [{ name: "無房間", keywords: ["改顏色"], task: "test-task", use_llm: false }]);
     ok("全部房間:沒設房間的規則 room_ok=false", resNoRoom[0].room_ok === false);
   }
 
@@ -266,7 +266,7 @@ function recIn(roomId, body) {
     ok("dryRun 帶出 rooms", Array.isArray(fixed.rooms) && fixed.rooms[0] === "!a:s");
     const param = res.find((r) => r.name === "帶參");
     ok("帶佔位 has_placeholder=true", param.has_placeholder === true);
-    ok("非 skill-dispatch 無 command 時為 null", dryRunRules("幫我改顏色", "!z:s", [{ name: "x", keywords: ["改顏色"], task: "demo-skill", use_llm: false, rooms: ["!z:s"] }])[0].command === null);
+    ok("非 skill-dispatch 無 command 時為 null", dryRunRules("幫我改顏色", "!z:s", [{ name: "x", keywords: ["改顏色"], task: "test-task", use_llm: false, rooms: ["!z:s"] }])[0].command === null);
   }
 
   // ── fillTemplate:把 {佔位} 用 params 填掉(支援中文 key)──

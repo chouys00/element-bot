@@ -15,8 +15,8 @@ function freshQueue() {
   fs.mkdirSync(d, { recursive: true });
   return d;
 }
-// 用真實 taskDef "demo-skill";sourceDir 只組路徑、不真存取,假 ops 不會碰磁碟。
-const TASK = { task: "demo-skill", source: { body: "把背景改成紅色" } };
+// 用真實通用 taskDef；sourceDir 只組路徑、不真存取，假 ops 不會碰磁碟。
+const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", command: "把背景改成紅色" };
 const findSummary = (lines) => lines.find((o) => typeof o.status === "string" && !o.step && !o.steps);
 
 (async () => {

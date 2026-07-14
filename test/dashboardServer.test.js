@@ -23,7 +23,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   fs.appendFileSync(outputFile, JSON.stringify({ room_id: "!r:s", sender: "@a", body: "hello" }) + "\n", "utf8");
 
   const rulesPath = path.join(root, "rules.json");
-  fs.writeFileSync(rulesPath, JSON.stringify([{ name: "改顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false }]), "utf8");
+  fs.writeFileSync(rulesPath, JSON.stringify([{ name: "改顏色", keywords: ["改顏色"], task: "skill-dispatch", project_path: root, command: "把背景改成紅色", use_llm: false }]), "utf8");
 
   // 假 judge:body 含「觸發」→ trigger true 並抽出固定連結,否則 trigger false。供 /api/rules/judge 測試,不打真 Codex。
   const fakeJudge = async (_rule, body) => ({ trigger: String(body).includes("觸發"), params: { 連結: "https://example.com/x" } });
@@ -91,13 +91,13 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const rd = await (await fetch(`${base}/api/rules`)).json();
   ok("rules GET 回現有規則", Array.isArray(rd.rules) && rd.rules.length === 1 && rd.rules[0].name === "改顏色");
   ok("rules GET 附房間 id→名", rd.rooms["!r:s"] === "產品群");
-  ok("rules GET 附 task 名單", Array.isArray(rd.tasks) && rd.tasks.includes("demo-skill"));
+  ok("rules GET 附 task 名單", Array.isArray(rd.tasks) && rd.tasks.length === 1 && rd.tasks[0] === "skill-dispatch");
   ok("rules GET 附監聽清單(檔缺 → env 後備)", Array.isArray(rd.monitor_rooms) && rd.monitor_rooms[0] === "!env:s");
 
   // PUT /api/rules 合法 → 寫入並可讀回
   const put = await fetch(`${base}/api/rules`, {
     method: "PUT",
-    body: JSON.stringify([{ name: "新規則", keywords: ["x"], task: "demo-skill", use_llm: false, rooms: ["!r:s"] }]),
+    body: JSON.stringify([{ name: "新規則", keywords: ["x"], task: "skill-dispatch", project_path: root, command: "x", use_llm: false, rooms: ["!r:s"] }]),
   });
   ok("rules PUT 合法回 200", put.status === 200);
   const after = await (await fetch(`${base}/api/rules`)).json();
@@ -132,8 +132,8 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   await fetch(`${base}/api/rules`, {
     method: "PUT",
     body: JSON.stringify([
-      { name: "LLM規則", keywords: ["x"], task: "demo-skill", use_llm: true, intent: "測試意圖", extract: ["連結"], rooms: ["!r:s"] },
-      { name: "非LLM規則", keywords: ["y"], task: "demo-skill", use_llm: false, rooms: ["!r:s"] },
+      { name: "LLM規則", keywords: ["x"], task: "skill-dispatch", project_path: root, command: "{連結}", use_llm: true, intent: "測試意圖", extract: ["連結"], rooms: ["!r:s"] },
+      { name: "非LLM規則", keywords: ["y"], task: "skill-dispatch", project_path: root, command: "y", use_llm: false, rooms: ["!r:s"] },
     ]),
   });
   const jTrig = await (await fetch(`${base}/api/rules/judge`, { method: "POST", body: JSON.stringify({ index: 0, body: "請觸發這則" }) })).json();

@@ -16,7 +16,7 @@
 - 集中管理 Codex 程序建構、權限、逾時、stdout 與 stderr 行為。
 - 從通用分派與 probe 提示詞中移除 `.claude/skills`、`.agents/skills`、`.cursor/skills` 或其他目標 skill 路徑假設。
 - 移除特殊任務 `i18n-skill`，因為它直接持有目標專案的 skill 路徑及驗證腳本。
-- 對外部專案只保留通用的 `skill-dispatch` 分派方式；本機 `demo-skill` 可作為封閉且自足的開發測試 fixture 保留。
+- 對外部專案只保留通用的 `skill-dispatch` 分派方式；最終審查確認 `demo-skill` 仍會把 `SKILL.md` 結構帶入正式 task 清單，因此一併移除。
 - 將 element-bot 自身的 repository skills 從 `.claude/skills` 遷移至 `.agents/skills`。
 - 更新原始碼、測試、log、dashboard 顯示文字與現行操作文件中的 Claude 執行期命名。
 - 新增可長期保存的遷移與還原文件。
@@ -35,7 +35,7 @@
 
 ### 執行期邊界
 
-新增 `src/codexRunner.js`，作為唯一允許建構或啟動 Codex CLI 的模組。它同時提供非同步與同步執行函式，因為 judge/probe 目前使用非同步 child process，而任務 executor 使用同步低階操作。
+新增 `src/codexRunner.js`，作為唯一允許建構或啟動 Codex CLI 的模組。最終只提供非同步執行函式；Windows 不經 shell 啟動，timeout 時以 PID 終止完整 process tree，避免舊任務在 worker 重試後繼續寫檔。
 
 兩種函式共用同一個參數建構器，避免不同呼叫端的權限與 CLI 語法逐漸分歧。
 
@@ -82,7 +82,7 @@ Probe 遵守相同邊界。它只回報工作目錄、收到的 command，以及
 
 移除 `i18n-skill`、其 `NSL_SKILL_DIR` 相依項，以及針對目標專案的驗證指令。若現有規則仍使用此任務，必須由管理者明確改成 `skill-dispatch`；element-bot 應對過時的任務名稱驗證失敗，不得靜默猜測目標 command。
 
-保留 `demo-skill` 作為本機開發 fixture，因為它只操作設定的 demo root，沒有綁定其他正式專案的 skill 體系。
+不保留 `demo-skill`；測試 fixture 不得出現在正式 `taskNames()`，也不得要求目標專案具有固定 `SKILL.md`。
 
 ### Repository skills 與 instructions
 

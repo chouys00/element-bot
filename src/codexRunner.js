@@ -10,6 +10,12 @@ const MODE_CONFIG = Object.freeze({
   execute: { sandbox: "workspace-write", network: true },
 });
 
+function defaultTimeoutMs(mode) {
+  if (mode !== "execute") return 120000;
+  const configured = parseInt(process.env.AI_TIMEOUT_MS || "1800000", 10);
+  return Number.isFinite(configured) && configured > 0 ? configured : 1800000;
+}
+
 function buildCodexArgs(mode, options = {}) {
   const config = MODE_CONFIG[mode];
   if (!config) throw new Error(`未知的 Codex mode: ${mode}`);
@@ -51,17 +57,31 @@ function prepareInvocation(mode, options) {
   };
 }
 
+// Windows 的 child.kill() 不會遞迴終止子程序；Codex timeout 時若留下 command runner，
+// 舊任務可能在 worker 重試後繼續寫入目標專案。taskkill /T 以 Codex PID 為根終止整棵樹。
+function terminateProcessTree(child) {
+  if (process.platform === "win32" && child && child.pid) {
+    const result = spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (!result.error && result.status === 0) return;
+  }
+  if (child && typeof child.kill === "function") child.kill();
+}
+
 function runCodex(prompt, options = {}) {
   const mode = options.mode || "execute";
-  const timeoutMs = options.timeoutMs || 120000;
+  const timeoutMs = options.timeoutMs || defaultTimeoutMs(mode);
   const spawnFn = options.spawnFn || spawn;
+  const terminateFn = options.terminateFn || terminateProcessTree;
   const command = options.command || process.env.CODEX_COMMAND || "codex";
   const invocation = prepareInvocation(mode, options);
 
   return new Promise((resolve, reject) => {
     const child = spawnFn(command, invocation.args, {
       cwd: options.cwd,
-      shell: process.platform === "win32",
+      shell: false,
       windowsHide: true,
     });
     let stdout = "";
@@ -74,7 +94,7 @@ function runCodex(prompt, options = {}) {
       fn(value);
     };
     const timer = setTimeout(() => {
-      child.kill();
+      terminateFn(child);
       finish(reject, new Error(`Codex CLI timeout(${timeoutMs}ms)`));
     }, timeoutMs);
 
@@ -90,29 +110,4 @@ function runCodex(prompt, options = {}) {
   }).finally(invocation.cleanup);
 }
 
-function runCodexSync(prompt, options = {}) {
-  const mode = options.mode || "execute";
-  const timeoutMs = options.timeoutMs || parseInt(process.env.AI_TIMEOUT_MS || "1800000", 10);
-  const spawnSyncFn = options.spawnSyncFn || spawnSync;
-  const command = options.command || process.env.CODEX_COMMAND || "codex";
-  const invocation = prepareInvocation(mode, options);
-  try {
-    const result = spawnSyncFn(command, invocation.args, {
-      input: String(prompt || ""),
-      cwd: options.cwd,
-      encoding: "utf8",
-      shell: process.platform === "win32",
-      windowsHide: true,
-      timeout: timeoutMs,
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 0) {
-      throw new Error(`Codex CLI exit ${result.status}: ${diagnostic(result.stderr, result.stdout)}`);
-    }
-    return String(result.stdout || "");
-  } finally {
-    invocation.cleanup();
-  }
-}
-
-module.exports = { buildCodexArgs, runCodex, runCodexSync };
+module.exports = { buildCodexArgs, defaultTimeoutMs, runCodex };

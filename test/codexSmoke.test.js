@@ -5,7 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
-const { runCodex, runCodexSync } = require("../src/codexRunner");
+const { runCodex } = require("../src/codexRunner");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "element-bot-codex-smoke-"));
 
@@ -25,15 +25,14 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "element-bot-codex-smoke-"
       "read-only smoke test 不得產生檔案"
     );
 
-    const writeOutput = runCodexSync(
+    await runCodex(
       [
         "在目前專案根目錄建立 codex-smoke.txt。",
         "檔案內容必須精確為 ELEMENT_BOT_CODEX_WRITE_OK（可有結尾換行）。",
-        "除此之外不要建立或修改其他檔案。完成後只回覆 done。",
+        "除此之外不要建立或修改其他檔案。",
       ].join("\n"),
       { mode: "execute", cwd: tempDir, timeoutMs: 600000 }
     );
-    assert.match(writeOutput, /done/i);
     const smokePath = path.join(tempDir, "codex-smoke.txt");
     assert.ok(fs.existsSync(smokePath), "workspace-write smoke test 未建立指定檔案");
     assert.strictEqual(fs.readFileSync(smokePath, "utf8").trim(), "ELEMENT_BOT_CODEX_WRITE_OK");

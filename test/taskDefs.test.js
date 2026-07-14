@@ -12,22 +12,14 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 }
 {
   let threw = false;
+  try { getTaskDef("demo-skill"); } catch (_) { threw = true; }
+  ok("demo-skill 已從正式任務清單移除", threw);
+}
+{
+  let threw = false;
   try { getTaskDef("不存在"); } catch (_) { threw = true; }
   ok("查無定義丟錯", threw);
 }
-{
-  const def = getTaskDef("demo-skill");
-  ok("找得到 demo-skill", !!def);
-  ok("demo-skill 有 prompt 函式", typeof def.prompt === "function");
-  ok("demo-skill prompt 指向 SKILL.md", def.prompt({ source: { body: "把背景改成紅色" } }).includes("SKILL.md"));
-  ok("demo-skill prompt 帶入聊天指令", def.prompt({ source: { body: "把背景改成紅色" } }).includes("把背景改成紅色"));
-  ok("demo-skill 不跑 verify(verifyArgs null)", def.verifyArgs == null);
-  ok("demo-skill 預設專案 sample-app", def.sourceDir({ params: {} }).endsWith("sample-app"));
-  let threw = false;
-  try { def.sourceDir({ params: { 專案: "../evil" } }); } catch (_) { threw = true; }
-  ok("專案逸出 DEMO_ROOT 丟錯", threw);
-}
-
 // 通用任務 skill-dispatch:路徑與指令都由 task 帶入(規則資料),定義本身固定。
 {
   const def = getTaskDef("skill-dispatch");
@@ -49,16 +41,13 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("skill-dispatch 不跑 verify(verifyArgs null)", def.verifyArgs == null);
 }
 
-// 兩個「直接改本體」任務的 prompt:commit 與否由專案 skill 文件決定,
-// 但 headless agent 不得自作主張(沒被要求就 commit 曾導致成敗誤判,見 defaultHandlers.summarize)。
-ok("demo-skill prompt 預設不 commit(依 SKILL.md 指示)", getTaskDef("demo-skill").prompt({ source: { body: "x" } }).includes("預設不 commit"));
-
 {
   const names = taskNames();
   ok("taskNames 回傳陣列", Array.isArray(names));
-  ok("taskNames 含 demo-skill", names.includes("demo-skill"));
+  ok("taskNames 不含 demo-skill", !names.includes("demo-skill"));
   ok("taskNames 不含 i18n-skill", !names.includes("i18n-skill"));
   ok("taskNames 含 skill-dispatch", names.includes("skill-dispatch"));
+  ok("正式任務只保留 skill-dispatch", names.length === 1);
 }
 
 console.log(`taskDefs.test.js: ${passed} 項通過 ✅`);

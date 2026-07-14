@@ -29,8 +29,8 @@ function waitFor(pred, timeoutMs) {
   });
 }
 
-const good = { name: "改顏色", keywords: ["改顏色"], task: "demo-skill", use_llm: false };
-const good2 = { name: "回答", keywords: ["回答"], task: "demo-skill", use_llm: false };
+const good = { name: "改顏色", keywords: ["改顏色"], task: "test-task", use_llm: false };
+const good2 = { name: "回答", keywords: ["回答"], task: "test-task", use_llm: false };
 
 (async () => {
   // reloadRules:好檔回新規則並 log

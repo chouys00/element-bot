@@ -1,6 +1,6 @@
 "use strict";
 const { spawnSync } = require("child_process");
-const { runCodexSync } = require("../codexRunner");
+const { runCodex: invokeCodex } = require("../codexRunner");
 
 // 來源須在 git 控制下且無未提交改動(改檔任務的安全網)。
 function gitClean(srcDir) {
@@ -9,7 +9,7 @@ function gitClean(srcDir) {
   if ((r.stdout || "").trim()) throw new Error("來源有未提交改動,請先 commit/還原:" + srcDir);
 }
 
-// 列出工作區相對 HEAD 的改動檔(porcelain),用來判斷 SKILL 是否真的改了本體。
+// 列出工作區相對 HEAD 的改動檔(porcelain),用來判斷目標任務是否真的改了專案。
 function gitChanged(srcDir) {
   const r = spawnSync("git", ["status", "--porcelain"], { cwd: srcDir, encoding: "utf8" });
   if (r.error) throw r.error;
@@ -22,7 +22,7 @@ function gitChanged(srcDir) {
 }
 
 // 目前 HEAD 的 commit hash;無 commit / 非 git 回 null。
-// prepare 記下起跑 HEAD,summarize 據此偵測 skill 是否違規自行 commit。
+// prepare 記下起跑 HEAD,summarize 據此偵測目標流程是否自行 commit。
 function gitHead(srcDir) {
   const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: srcDir, encoding: "utf8" });
   if (r.error || r.status !== 0) return null;
@@ -42,7 +42,7 @@ function gitCommitsSince(srcDir, baseHead) {
 
 // 執行期 provider 邊界只存在於 codexRunner；ops 不自行組合 CLI 參數。
 function runCodex(prompt, projectDir) {
-  return runCodexSync(prompt, { mode: "execute", cwd: projectDir });
+  return invokeCodex(prompt, { mode: "execute", cwd: projectDir });
 }
 
 // 跑 verify 腳本,從輸出解析 errors=/warnings=。

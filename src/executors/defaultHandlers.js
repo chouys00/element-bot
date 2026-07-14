@@ -31,7 +31,7 @@ function make(ops) {
       const def = getTaskDef(task.task);
       const src = def.sourceDir(task);
       emit({ step: "ai_run", status: "run", note: "派發 Codex 依目標專案自身設定執行" });
-      const output = ops.runCodex(def.prompt(task), src);
+      const output = await ops.runCodex(def.prompt(task), src);
       if (typeof output === "string" && output.trim()) {
         emit({ ai_output: output.length > AI_OUTPUT_MAX ? output.slice(-AI_OUTPUT_MAX) : output });
       }
@@ -52,7 +52,7 @@ function make(ops) {
         if (v.errors > 0) return { status: "NEEDS", summary: `已改動但 verify 有缺:errors=${v.errors}`, produced: changed, openPath: src };
         return { status: "OK", summary: `改動 ${changed.length} 個檔:${changed.join(", ")}`, needsReview: def.needsReview || [], produced: changed, openPath: src };
       }
-      // 工作區乾淨:比對起跑 HEAD。skill 可能依其文件指示以 commit 收尾(正當),
+      // 工作區乾淨:比對起跑 HEAD。目標專案流程可能依自身指示以 commit 收尾(正當),
       // 也可能是 headless agent 自作主張；無論何者都如實回報，不誤判成「沒做事」。
       const base = workDir ? readJsonSafe(path.join(workDir, "base.json"), null) : null;
       if (base && base.head && ops.gitHead && ops.gitCommitsSince) {
@@ -61,14 +61,14 @@ function make(ops) {
           const { commits, files } = ops.gitCommitsSince(src, base.head);
           return {
             status: "OK",
-            summary: `skill 已將改動 commit(${commits.length} 筆:${commits.join(";")}),共 ${files.length} 個檔:${files.join(", ")}`,
-            needsReview: ["改動已被 commit,請確認 commit 是該 skill 文件明確要求的(否則屬自作主張,必要時 git reset)", ...(def.needsReview || [])],
+            summary: `目標流程已將改動 commit(${commits.length} 筆:${commits.join(";")}),共 ${files.length} 個檔:${files.join(", ")}`,
+            needsReview: ["改動已被 commit,請確認 commit 是目標專案 instructions 明確要求的(否則屬自作主張,必要時 git reset)", ...(def.needsReview || [])],
             produced: files,
             openPath: src,
           };
         }
       }
-      return { status: "ERROR", message: "SKILL 未對本體產生任何改動", openPath: src };
+      return { status: "ERROR", message: "目標任務未對專案產生任何改動", openPath: src };
     },
   };
 }

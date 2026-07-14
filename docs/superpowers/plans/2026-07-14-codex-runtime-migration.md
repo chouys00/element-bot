@@ -4,7 +4,7 @@
 
 **目標：** 將 element-bot 唯一的 LLM/agent 執行環境改為 Codex，並讓通用分派完全不依賴目標專案的 skill 目錄或工具體系。
 
-**架構：** 新增 `src/codexRunner.js` 作為唯一 Codex CLI 邊界，judge、probe 與 executor 只呼叫它提供的同步或非同步介面。`skill-dispatch` 只傳遞目標專案路徑與 command，目標專案如何解讀 instructions/skills 完全交給 Codex 與該專案本身。
+**架構：** 新增 `src/codexRunner.js` 作為唯一 Codex CLI 邊界，judge、probe 與 executor 只呼叫它提供的非同步介面。`skill-dispatch` 只傳遞目標專案路徑與 command，目標專案如何解讀 instructions/skills 完全交給 Codex 與該專案本身。
 
 **技術棧：** Node.js 22、CommonJS、`child_process.spawn`/`spawnSync`、Codex CLI `exec`、既有自製 Node assert 測試。
 
@@ -33,7 +33,7 @@
 
 - `buildCodexArgs(mode, options?) -> string[]`
 - `runCodex(prompt, options?) -> Promise<string>`
-- `runCodexSync(prompt, options?) -> string`
+- 不提供同步 runner；Windows timeout 必須能終止完整 process tree。
 - options 支援 `mode`、`cwd`、`timeoutMs`、`outputSchema`、`spawnFn`/`spawnSyncFn` 測試注入。
 
 - [ ] **Step 1：先新增失敗測試**
@@ -149,9 +149,9 @@ git commit -m "refactor: route judge and probe through Codex"
 
 **介面：**
 
-- ops 匯出 `runCodex`，內部呼叫 `runCodexSync(prompt, {mode:"execute", cwd:projectDir})`。
+- ops 匯出非同步 `runCodex`，內部呼叫 `runCodex(prompt, {mode:"execute", cwd:projectDir})`。
 - handlers 只依賴 `ops.runCodex`。
-- task names 只保留 `demo-skill`、`skill-dispatch`。
+- task names 只保留 `skill-dispatch`；`demo-skill` 在最終審查時移除，避免正式 task 帶入固定 skill 結構。
 
 - [ ] **Step 1：先寫失敗測試**
 

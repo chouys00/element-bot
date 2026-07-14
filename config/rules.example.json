@@ -1,13 +1,5 @@
 [
   {
-    "name": "改背景色",
-    "keywords": ["改背景", "背景色"],
-    "task": "demo-skill",
-    "use_llm": false,
-    "enabled": false,
-    "rooms": ["!請填要監聽的房間ID:your.homeserver"]
-  },
-  {
     "name": "禪道日常修改派工(範例)",
     "keywords": ["日常修改"],
     "task": "skill-dispatch",

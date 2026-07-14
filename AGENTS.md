@@ -9,7 +9,8 @@
 
 - Codex 是唯一支援的 agent runtime。
 - 只有 `src/codexRunner.js` 可以建構 Codex CLI 參數或啟動 `codex`。
-- 其他模組只能呼叫 `runCodex()`、`runCodexSync()`，不得直接使用 `child_process` 啟動 agent CLI。
+- 其他模組只能 `await runCodex()`，不得直接使用 `child_process` 啟動 agent CLI。
+- Windows timeout 必須終止完整 Codex process tree；不得改回同步 runner 或 `shell:true`。
 - 未來若更換 provider，只修改 runner、直接呼叫介面、相關單元測試與現行操作文件；不得對整個 repository 做機械式全域取代。
 - 歷史 `docs/superpowers/` 與 `CHANGELOG.md` 應保留當時實際使用的工具名稱。
 

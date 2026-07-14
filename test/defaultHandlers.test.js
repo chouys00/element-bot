@@ -8,6 +8,7 @@ const { make } = require("../src/executors/defaultHandlers");
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
 const noop = () => {};
+const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", command: "把背景改成紅色" };
 
 (async () => {
   // prepare:唯讀檢查本體 git 乾淨(呼叫 gitClean),不複製
@@ -15,18 +16,18 @@ const noop = () => {};
     const calls = [];
     const ops = { gitClean: () => calls.push("git"), runCodex: () => calls.push("codex"), runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    await h.prepare({ task: { task: "demo-skill" }, emit: noop, shared: {} });
+    await h.prepare({ task: TASK, emit: noop, shared: {} });
     ok("prepare 只 gitClean、不複製", calls.join(",") === "git");
   }
 
-  // ai_run:把 Codex 帶進真實專案,prompt 指向 SKILL.md、cwd 為目標專案
+  // ai_run:把 Codex 帶進真實專案，交付通用 command、cwd 為目標專案
   {
     let prompt = null, cwd = null;
-    const ops = { gitClean: () => {}, runCodex: (p, dir) => { prompt = p; cwd = dir; }, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, runCodex: async (p, dir) => { prompt = p; cwd = dir; return ""; }, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    await h.ai_run({ task: { task: "demo-skill", source: { body: "把背景改成紅色" } }, emit: noop, shared: {} });
+    await h.ai_run({ task: TASK, emit: noop, shared: {} });
     ok("ai_run 呼叫 Codex", prompt !== null);
-    ok("ai_run prompt 指向 SKILL.md", typeof prompt === "string" && prompt.includes("SKILL.md"));
+    ok("ai_run prompt 帶入通用 command", typeof prompt === "string" && prompt.includes("把背景改成紅色"));
     ok("ai_run cwd 為目標專案(sample-app)", typeof cwd === "string" && cwd.endsWith("sample-app"));
   }
 
@@ -36,8 +37,8 @@ const noop = () => {};
     const ops = { gitClean: () => {}, runCodex: () => {}, runVerify: () => { verifyCalled = true; return { errors: 0 }; }, gitChanged: () => ["index.html"] };
     const h = make(ops);
     const shared = {};
-    await h.verify({ task: { task: "demo-skill" }, emit: noop, shared });
-    ok("demo-skill verifyArgs null 不呼叫 runVerify", verifyCalled === false && shared.verify.errors === 0);
+    await h.verify({ task: TASK, emit: noop, shared });
+    ok("skill-dispatch verifyArgs null 不呼叫 runVerify", verifyCalled === false && shared.verify.errors === 0);
   }
 
   // summarize:本體有改動 + verify errors=0 → OK
@@ -45,8 +46,8 @@ const noop = () => {};
     const ops = { gitClean: () => {}, runCodex: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => ["index.html"] };
     const h = make(ops);
     const shared = {};
-    await h.verify({ task: { task: "demo-skill" }, emit: noop, shared });
-    const sum = await h.summarize({ task: { task: "demo-skill" }, emit: noop, shared });
+    await h.verify({ task: TASK, emit: noop, shared });
+    const sum = await h.summarize({ task: TASK, emit: noop, shared });
     ok("有改動 → OK", sum.status === "OK" && sum.produced.includes("index.html"));
     ok("OK 帶 needsReview", Array.isArray(sum.needsReview));
   }
@@ -55,7 +56,7 @@ const noop = () => {};
   {
     const ops = { gitClean: () => {}, runCodex: () => {}, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    const sum = await h.summarize({ task: { task: "demo-skill" }, emit: noop, shared: {} });
+    const sum = await h.summarize({ task: TASK, emit: noop, shared: {} });
     ok("無改動 → ERROR", sum.status === "ERROR");
   }
 
@@ -64,7 +65,7 @@ const noop = () => {};
     const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "dh-"));
     const ops = { gitClean: () => {}, gitHead: () => "abc123", runCodex: () => "", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    await h.prepare({ workDir, task: { task: "demo-skill" }, emit: noop, shared: {} });
+    await h.prepare({ workDir, task: TASK, emit: noop, shared: {} });
     const base = JSON.parse(fs.readFileSync(path.join(workDir, "base.json"), "utf8"));
     ok("prepare 記下起跑 HEAD", base.head === "abc123");
   }
@@ -72,9 +73,9 @@ const noop = () => {};
   // ai_run:Codex 的 stdout 進 log(emit ai_output)
   {
     const emitted = [];
-    const ops = { gitClean: () => {}, runCodex: () => "我改了 index.html 的背景色", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, runCodex: async () => "我改了 index.html 的背景色", runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    await h.ai_run({ task: { task: "demo-skill", source: { body: "x" } }, emit: (o) => emitted.push(o), shared: {} });
+    await h.ai_run({ task: TASK, emit: (o) => emitted.push(o), shared: {} });
     const out = emitted.find((o) => typeof o.ai_output === "string");
     ok("ai_run 把 Codex 輸出 emit 進 log", out && out.ai_output.includes("背景色"));
   }
@@ -83,9 +84,9 @@ const noop = () => {};
   {
     const emitted = [];
     const long = "x".repeat(9000) + "結尾";
-    const ops = { gitClean: () => {}, runCodex: () => long, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
+    const ops = { gitClean: () => {}, runCodex: async () => long, runVerify: () => ({ errors: 0 }), gitChanged: () => [] };
     const h = make(ops);
-    await h.ai_run({ task: { task: "demo-skill", source: { body: "x" } }, emit: (o) => emitted.push(o), shared: {} });
+    await h.ai_run({ task: TASK, emit: (o) => emitted.push(o), shared: {} });
     const out = emitted.find((o) => typeof o.ai_output === "string");
     ok("超長輸出截尾且保留結尾", out.ai_output.length <= 8000 && out.ai_output.endsWith("結尾"));
   }
@@ -101,7 +102,7 @@ const noop = () => {};
       gitCommitsSince: () => ({ commits: ["new111 test: 優惠辦理域名更換"], files: ["src/a.js", "src/b.js"] }),
     };
     const h = make(ops);
-    const sum = await h.summarize({ workDir, task: { task: "demo-skill" }, emit: noop, shared: {} });
+    const sum = await h.summarize({ workDir, task: TASK, emit: noop, shared: {} });
     ok("commit 收尾 → 不誤判 ERROR", sum.status === "OK");
     ok("commit 收尾 → summary 指出已 commit", sum.summary.includes("commit"));
     ok("commit 收尾 → produced 為 commit 涉及檔案", sum.produced.includes("src/a.js"));
@@ -117,7 +118,7 @@ const noop = () => {};
       gitChanged: () => [], gitHead: () => "base00", gitCommitsSince: () => ({ commits: [], files: [] }),
     };
     const h = make(ops);
-    const sum = await h.summarize({ workDir, task: { task: "demo-skill" }, emit: noop, shared: {} });
+    const sum = await h.summarize({ workDir, task: TASK, emit: noop, shared: {} });
     ok("無改動且 HEAD 未動 → ERROR", sum.status === "ERROR");
   }
 
