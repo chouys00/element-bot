@@ -49,7 +49,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
       probeFn: async () => { called = true; return {}; },
     });
     ok("LLM 不觸發 → trigger false", res.trigger === false);
-    ok("不觸發則不派 claude 探測", called === false && res.probe === null);
+    ok("不觸發則不派 Codex 探測", called === false && res.probe === null);
   }
 
   // 固定指令(use_llm false):不 judge,指令原樣,直接探測
