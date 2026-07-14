@@ -79,6 +79,22 @@ function freshQueue() {
   ok("無 sender 則無「觸發人」行", !text.includes("觸發人"));
 }
 
+{
+  const blocked = formatNotify({ status: "blocked", rule: "禪道", source: {}, summary: "登入失效" });
+  const review = formatNotify({ status: "review", rule: "禪道", source: {}, summary: "部分完成" });
+  ok("blocked 通知使用受阻圖示與文字", blocked.startsWith("⛔") && blocked.includes("受阻"));
+  ok("review 通知使用部分完成圖示與文字", review.startsWith("⚠️") && review.includes("部分完成"));
+}
+
+{
+  const q = freshQueue();
+  fs.mkdirSync(path.join(q, "logs"), { recursive: true });
+  fs.writeFileSync(path.join(q, "logs", "blocked.log"), '{"status":"blocked","summary":"缺少登入"}\n', "utf8");
+  const payload = writeNotifyFile({ queueDir: q, id: "blocked", status: "blocked", task: { rule: "禪道", source: {} } });
+  ok("非成功結構化狀態也從 log 取得摘要", payload.summary === "缺少登入");
+  fs.rmSync(q, { recursive: true, force: true });
+}
+
 // formatNotify:無 rule 用 task 名;source 缺房間 → 未知房間;無參數也不丟錯
 {
   const text = formatNotify({ status: "done", task: "some-skill", source: {}, summary: "" });

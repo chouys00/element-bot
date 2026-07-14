@@ -132,11 +132,12 @@ function createServer(deps) {
           const id = decodeURIComponent(m[1]);
           if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
           if (m[2] === "requeue") {
-            const from = path.join(queueDir, "failed", id + ".json");
+            const sourceStatus = ["failed", "blocked"].find((status) => fs.existsSync(path.join(queueDir, status, id + ".json")));
+            const from = sourceStatus ? path.join(queueDir, sourceStatus, id + ".json") : "";
             const to = path.join(queueDir, "pending", id + ".json");
-            if (!fs.existsSync(from)) { res.writeHead(404); return res.end("no failed task"); }
+            if (!sourceStatus) { res.writeHead(404); return res.end("no requeueable task"); }
             ensureDir(path.join(queueDir, "pending"));
-            try { fs.rmSync(path.join(queueDir, "failed", id + ".json.error.txt"), { force: true }); } catch (_) {}
+            try { fs.rmSync(path.join(queueDir, sourceStatus, id + ".json.error.txt"), { force: true }); } catch (_) {}
             fs.renameSync(from, to);
             return sendJson(res, 200, { ok: true });
           }

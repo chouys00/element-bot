@@ -23,7 +23,7 @@ function readSummaryFromLog(queueDir, id) {
 function writeNotifyFile(info) {
   const { queueDir, id, status, task, error } = info;
   const notifyDir = path.join(queueDir, "notify");
-  const summary = status === "done" ? readSummaryFromLog(queueDir, id) : truncate(error, 200);
+  const summary = error ? truncate(error, 200) : readSummaryFromLog(queueDir, id);
   const payload = {
     status,
     rule: (task && task.rule) || "",
@@ -51,8 +51,13 @@ function shortSender(sender) {
 //   📝 摘要
 function formatNotify(payload, opts = {}) {
   const { rooms = {}, senderName } = opts;
-  const icon = payload.status === "done" ? "✅" : "❌";
-  const verb = payload.status === "done" ? "完成" : "失敗";
+  const display = {
+    done: ["✅", "完成"],
+    failed: ["❌", "失敗"],
+    blocked: ["⛔", "受阻"],
+    review: ["⚠️", "部分完成"],
+  };
+  const [icon, verb] = display[payload.status] || ["❓", String(payload.status || "未知")];
   const label = payload.rule || payload.task || "任務";
   const src = payload.source || {};
   const roomName = (src.room_id && rooms[src.room_id]) || src.room_id || "未知房間";

@@ -10,7 +10,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 
 function freshRoot() {
   const d = path.join(os.tmpdir(), `agg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
-  for (const s of ["pending", "processing", "done", "failed", "logs"]) fs.mkdirSync(path.join(d, "queue", s), { recursive: true });
+  for (const s of ["pending", "processing", "done", "failed", "blocked", "review", "logs"]) fs.mkdirSync(path.join(d, "queue", s), { recursive: true });
   fs.mkdirSync(path.join(d, "output"), { recursive: true });
   return d;
 }
@@ -62,6 +62,16 @@ fs.mkdirSync(path.join(queueDir, "work", "t1"), { recursive: true });
 fs.writeFileSync(path.join(queueDir, "work", "t1", "verified.json"), "{}", "utf8");
 ok("verified 反映標記檔", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t1").verified === true);
 ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t2").verified === false);
+
+writeTask(queueDir, "blocked", "blk.json", { rule: "禪道", task: "skill-dispatch", enqueued_at: "2026-06-26T02:40:00.000Z", source: {} });
+writeTask(queueDir, "review", "part.json", { rule: "禪道", task: "skill-dispatch", enqueued_at: "2026-06-26T02:50:00.000Z", source: {} });
+{
+  const withResults = collectTasks(queueDir, rooms, 100);
+  ok("blocked 任務進入清單", withResults.find((t) => t.id === "blk").status === "blocked");
+  ok("review 任務進入清單", withResults.find((t) => t.id === "part").status === "review");
+  const resultCounts = statusCounts(queueDir);
+  ok("blocked/review 狀態統計正確", resultCounts.blocked === 1 && resultCounts.review === 1);
+}
 
 // ── LLM 判斷紀錄(judging/judged)進任務清單 ──
 fs.mkdirSync(path.join(queueDir, "judging"), { recursive: true });

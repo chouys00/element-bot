@@ -5,7 +5,7 @@ const { translateRoom } = require("../roomsSidecar");
 
 // judging/judged 為 LLM 判斷紀錄(見 judgeStatus.js):judging=判斷中,judged=判定不觸發/判斷失敗。
 // 一併列進任務清單,使用者才分得清「沒收到 vs 判斷中 vs LLM 拒絕 vs 判斷失敗」。
-const STATUS_DIRS = ["judging", "judged", "pending", "processing", "done", "failed"];
+const STATUS_DIRS = ["judging", "judged", "pending", "processing", "done", "failed", "blocked", "review"];
 
 // 合併四個狀態目錄的任務檔,翻譯房間名稱,依 enqueued_at 新到舊排序,取前 limit 筆。
 // 壞掉的 JSON 不讓整批失敗,標記 parseError 後保留。
@@ -56,16 +56,19 @@ function collectTasks(queueDir, roomsMap, limit) {
 
 // 各狀態目錄的 .json 數量。額外給 review = done 但尚未驗收的數量(供「待驗收 / 完成」拆分)。
 function statusCounts(queueDir) {
-  const counts = { judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, review: 0 };
+  const counts = { judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, blocked: 0, review: 0, unverified: 0 };
+  let unverifiedDone = 0;
   for (const status of STATUS_DIRS) {
     try {
       const files = fs.readdirSync(path.join(queueDir, status)).filter((f) => f.endsWith(".json"));
       counts[status] = files.length;
       if (status === "done") {
-        counts.review = files.filter((f) => !isVerified(queueDir, f.replace(/\.json$/, ""))).length;
+        unverifiedDone = files.filter((f) => !isVerified(queueDir, f.replace(/\.json$/, ""))).length;
       }
     } catch (_) {}
   }
+  counts.unverified = unverifiedDone;
+  counts.review += unverifiedDone;
   return counts;
 }
 

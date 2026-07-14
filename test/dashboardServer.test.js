@@ -49,6 +49,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 
   const html = await fetch(`${base}/`);
   ok("根路徑回 200", html.status === 200);
+  const htmlText = await html.text();
+  ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
+  ok("dashboard 顯示結構化驗證與提交證據", htmlText.includes("修改／產出") && htmlText.includes("驗證") && htmlText.includes("提交"));
 
   const traversal = await fetch(`${base}/api/tasks/..%2F..%2Fsecret/log`);
   ok("log 端點擋路徑穿越(400)", traversal.status === 400);
@@ -60,6 +63,11 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const rq = await fetch(`${base}/api/tasks/r1/requeue`, { method: "POST" });
   ok("requeue 回 200", rq.status === 200);
   ok("已移回 pending/", fs.existsSync(path.join(queueDir, "pending", "r1.json")));
+
+  fs.mkdirSync(path.join(queueDir, "blocked"), { recursive: true });
+  fs.writeFileSync(path.join(queueDir, "blocked", "r2.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  const blockedRequeue = await fetch(`${base}/api/tasks/r2/requeue`, { method: "POST" });
+  ok("blocked 任務可重跑", blockedRequeue.status === 200 && fs.existsSync(path.join(queueDir, "pending", "r2.json")));
   ok("failed/ 任務已無", !fs.existsSync(path.join(queueDir, "failed", "r1.json")));
   ok("error.txt 已清", !fs.existsSync(path.join(queueDir, "failed", "r1.json.error.txt")));
 

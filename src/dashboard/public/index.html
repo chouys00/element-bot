@@ -40,7 +40,7 @@
   tr.task:hover { background: #1f232b; }
   tr.task.sel { background: #283041; }
   .badge { padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; }
-  .pending { background: #9ca3af; } .processing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed { background: #ef4444; }
+  .pending { background: #9ca3af; } .processing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed { background: #ef4444; } .blocked { background: #b45309; }
   .judging { background: #8b5cf6; } .rejected { background: #4b5563; } .judge_error { background: #b45309; }
   pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   .muted { color: #777; }
@@ -126,7 +126,7 @@
 
 <script src="/resizable.js"></script>
 <script>
-const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
+const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗", blocked: "受阻", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
 let selectedId = null;
 let lastTasks = [];
 // 詳情面板上次渲染的任務與 HTML,用來判斷這次輪詢要不要真的重建 DOM。
@@ -181,9 +181,9 @@ function renderStatus(s) {
   document.getElementById("botStatus").textContent = s.bot_online ? "🟢 bot 連線中" : "🔴 bot 離線";
   const c = s.counts || {};
   const review = c.review || 0;
-  const finished = (c.done || 0) - review; // 完成 = done 之中已驗收的
+  const finished = (c.done || 0) - (c.unverified || 0); // 完成 = done 之中已驗收的
   document.getElementById("counts").innerHTML =
-    `<span>LLM 判斷中 ${c.judging || 0}</span><span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>待驗收 ${review}</span><span>完成 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
+    `<span>LLM 判斷中 ${c.judging || 0}</span><span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>受阻 ${c.blocked || 0}</span><span>待驗收 ${review}</span><span>完成 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
 }
 
 function renderMsgs(msgs) {
@@ -247,10 +247,26 @@ async function renderDetail() {
     : "";
 
   const sum = prog.summary;
+  const changesHtml = sum && Array.isArray(sum.changes) && sum.changes.length
+    ? `<div class="k" style="margin-top:8px">修改／產出</div>` + sum.changes.map((item) => `<div>• ${esc(item)}</div>`).join("")
+    : "";
+  const validationHtml = sum && Array.isArray(sum.validation) && sum.validation.length
+    ? `<div class="k" style="margin-top:8px">驗證</div>` + sum.validation.map((item) => {
+        const icon = item.status === "passed" ? "✓" : item.status === "failed" ? "✗" : "○";
+        return `<div>${icon} ${esc(item.command)} — ${esc(item.status)}${item.detail ? `：${esc(item.detail)}` : ""}</div>`;
+      }).join("")
+    : "";
+  const commitsHtml = sum && Array.isArray(sum.commits) && sum.commits.length
+    ? `<div class="k" style="margin-top:8px">提交</div>` + sum.commits.map((item) => `<div><code>${esc(item.hash)}</code> ${esc(item.message)}</div>`).join("")
+    : "";
+  const warningsHtml = sum && Array.isArray(sum.warnings) && sum.warnings.length
+    ? sum.warnings.map((item) => `<div style="color:#f0b072">⚠ ${esc(item)}</div>`).join("")
+    : "";
   const sumHtml = sum
     ? `<div class="k" style="margin-top:8px">結果</div><div>${esc(sum.status)} — ${esc(sum.summary || sum.message || "")}</div>` +
       ((Array.isArray(sum.needsReview) && sum.needsReview.length)
-        ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "")
+        ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "") +
+      changesHtml + validationHtml + commitsHtml + warningsHtml
     : "";
 
   // Codex 在專案內的實際輸出(ai_run 步驟),讓「結果」不只有一行彙總。
@@ -279,7 +295,7 @@ async function renderDetail() {
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
     ${sum && sum.openPath ? `<button data-act="open" class="abtn">開啟專案</button>` : ""}
     ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收"}</button>` : ""}
-    ${t.status === "failed" ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
+    ${(t.status === "failed" || t.status === "blocked") ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
   </div>`;
 
   const fullHtml = `
