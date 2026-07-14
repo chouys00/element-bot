@@ -31,13 +31,16 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     ok("skill-dispatch 缺 project_path 丟錯", threw);
   }
   ok("skill-dispatch prompt 帶入指令", def.prompt({ command: "/i18n pages/activity" }).includes("/i18n pages/activity"));
-  ok("skill-dispatch prompt 提及用 skill 識別", def.prompt({ command: "啟動" }).includes("skill"));
+  const prompt = def.prompt({ command: "https://zentao.example/bug-view-1.html" });
+  ok("prompt 將 command 視為專案內直接輸入", prompt.includes("直接在此專案"));
+  ok("prompt 要求依專案 instructions 與 skills 執行", prompt.includes("instructions") && prompt.includes("skills"));
+  ok("prompt 要求結構化回報", prompt.includes("指定 schema"));
   for (const forbidden of [".claude/skills", ".agents/skills", ".cursor/skills"]) {
     ok(`skill-dispatch prompt 不指定 ${forbidden}`, !def.prompt({ command: "啟動" }).includes(forbidden));
   }
-  ok("skill-dispatch prompt 含安全紅線", def.prompt({ command: "啟動" }).includes("安全紅線"));
-  ok("skill-dispatch prompt 預設不 commit(依 skill 文件指示)", def.prompt({ command: "啟動" }).includes("預設不 commit"));
-  ok("skill-dispatch prompt 禁止自作主張 commit", def.prompt({ command: "啟動" }).includes("絕不自作主張"));
+  for (const forbidden of ["不得讀寫工作目錄之外", "預設不 commit", "絕不自作主張"]) {
+    ok(`prompt 不含派發器政策: ${forbidden}`, !prompt.includes(forbidden));
+  }
   ok("skill-dispatch 不跑 verify(verifyArgs null)", def.verifyArgs == null);
 }
 

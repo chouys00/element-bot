@@ -16,12 +16,11 @@ const DEFS = {
     prompt: (task) => {
       const command = String((task && task.command) || "");
       return [
-        "你是自動化執行代理，工作目錄是這次任務唯一允許修改的目標專案。",
-        "請把下方 command 視為使用者在目標專案中提出的要求。",
-        "依目標專案自身的 instructions 與可用 skills 判斷並執行正確流程；element-bot 不指定其位置或工具體系。",
+        "你正在規則指定的目標專案中執行任務。",
+        "請把下方 command 視為使用者直接在此專案提出的要求。",
+        "依此專案自身的 AGENTS.md、instructions 與 skills 完整執行；element-bot 不介入專案如何修改、驗證或提交。",
         "command：" + command,
-        "安全紅線：不得讀寫工作目錄之外的檔案，不得修改其他專案。",
-        "版本控制：只有目標專案 instructions 或採用的 skill 明確要求時才能 commit；否則預設不 commit。絕不自作主張 push、tag 或 reset。",
+        "完成後依指定 schema 回報實際結果與證據；不得在回報中包含 token、密碼或其他秘密內容。",
       ].join("\n");
     },
     verifyArgs: null,

@@ -54,9 +54,9 @@ function hangingChild() {
   ok("probe 使用 read-only", probeArgs.includes("read-only"));
 
   const executeArgs = buildCodexArgs("execute");
-  ok("execute 使用 workspace-write", executeArgs.includes("workspace-write"));
-  ok("execute 明確開啟 workspace 網路", executeArgs.includes("sandbox_workspace_write.network_access=true"));
-  ok("execute 不使用 danger-full-access", !executeArgs.includes("danger-full-access"));
+  ok("execute 使用 danger-full-access", executeArgs.includes("danger-full-access"));
+  ok("execute 不使用 workspace-write", !executeArgs.includes("workspace-write"));
+  ok("execute 不加入 workspace-write 專用網路設定", !executeArgs.includes("sandbox_workspace_write.network_access=true"));
   ok("execute 不略過 sandbox", !executeArgs.includes("--dangerously-bypass-approvals-and-sandbox"));
 
   const oldAiTimeout = process.env.AI_TIMEOUT_MS;

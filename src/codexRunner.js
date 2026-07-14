@@ -7,7 +7,7 @@ const { spawn, spawnSync } = require("child_process");
 const MODE_CONFIG = Object.freeze({
   judge: { sandbox: "read-only", network: false },
   probe: { sandbox: "read-only", network: false },
-  execute: { sandbox: "workspace-write", network: true },
+  execute: { sandbox: "danger-full-access", network: true },
 });
 
 function defaultTimeoutMs(mode) {
@@ -21,7 +21,7 @@ function buildCodexArgs(mode, options = {}) {
   if (!config) throw new Error(`未知的 Codex mode: ${mode}`);
 
   const args = ["--ask-for-approval", "never"];
-  if (config.network) {
+  if (config.network && config.sandbox === "workspace-write") {
     args.push("-c", "sandbox_workspace_write.network_access=true");
   }
   args.push(
