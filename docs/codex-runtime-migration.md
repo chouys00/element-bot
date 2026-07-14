@@ -14,6 +14,16 @@ Element-bot 只支援 Codex。所有 CLI 細節集中於 `src/codexRunner.js`：
 
 Judge 另透過暫存 JSON 檔使用 `--output-schema`，執行結束後立即清除。
 
+### Windows sandbox helper 路徑
+
+若 `codex` 可啟動、但 execute 階段回報 `orchestrator_helper_launch_failed` 或
+`codex-windows-sandbox-setup.exe` 存取被拒，先執行 `npm run test:codex-smoke` 確認。
+部分 standalone 安裝版本的公開 `bin/codex.exe` 無法定位套件旁的 `codex-resources`；
+可在本機 `.env` 暫時把 `CODEX_COMMAND` 指向
+`%USERPROFILE%\.codex\packages\standalone\releases\<version>-x86_64-pc-windows-msvc\bin\codex.exe`。
+這是本機執行環境修正，不應把使用者名稱或版本路徑提交進版控；Codex 升級後應改回
+`CODEX_COMMAND=codex` 並重跑 smoke test。
+
 ## 本次遷移的 live files
 
 - CLI 邊界：`src/codexRunner.js`、`test/codexRunner.test.js`
