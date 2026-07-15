@@ -15,6 +15,11 @@ function filesUnder(root) {
 }
 
 const repo = path.resolve(__dirname, "..");
+const envExample = fs.readFileSync(path.join(repo, ".env.example"), "utf8");
+const migrationDoc = fs.readFileSync(path.join(repo, "docs", "codex-runtime-migration.md"), "utf8");
+assert.match(envExample, /TASK_RESULT_MODE=generic/);
+assert.match(migrationDoc, /TASK_RESULT_MODE=legacy/);
+
 const files = [
   ...filesUnder(path.join(repo, "src")),
   path.join(repo, ".env.example"),
@@ -25,6 +30,7 @@ const violations = [];
 for (const file of files) {
   const text = fs.readFileSync(file, "utf8");
   if (/claude/i.test(text)) violations.push(`${path.relative(repo, file)}: Claude runtime 命名`);
+  if (/gemini/i.test(text)) violations.push(`${path.relative(repo, file)}: Gemini runtime 命名`);
   if (/demo-skill|runCodexSync/.test(text)) violations.push(`${path.relative(repo, file)}: 已移除的正式 runtime/task 介面`);
   for (const skillPath of [".claude/skills", ".agents/skills", ".cursor/skills", ".Codex/skills"]) {
     if (text.includes(skillPath)) violations.push(`${path.relative(repo, file)}: 固定目標路徑 ${skillPath}`);
