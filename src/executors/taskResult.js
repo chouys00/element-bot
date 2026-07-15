@@ -1,21 +1,10 @@
 "use strict";
 
 const RESULT_STATUSES = ["success", "failed", "blocked", "partial"];
-const MINIMAL_STATUSES = ["success", "failed", "partial"];
 const VALIDATION_STATUSES = ["passed", "failed", "skipped", "not_applicable"];
 const REQUIRED_KEYS = ["status", "summary", "changes", "validation", "commits", "warnings"];
 
-const MINIMAL_TASK_RESULT_SCHEMA = {
-  type: "object",
-  properties: {
-    status: { type: "string", enum: MINIMAL_STATUSES },
-    result: { type: "string", minLength: 1 },
-  },
-  required: ["status", "result"],
-  additionalProperties: false,
-};
-
-const DETAILED_TASK_RESULT_SCHEMA = {
+const TASK_RESULT_SCHEMA = {
   type: "object",
   properties: {
     status: { type: "string", enum: RESULT_STATUSES },
@@ -51,7 +40,6 @@ const DETAILED_TASK_RESULT_SCHEMA = {
   required: REQUIRED_KEYS,
   additionalProperties: false,
 };
-const TASK_RESULT_SCHEMA = DETAILED_TASK_RESULT_SCHEMA;
 
 function fail(detail) {
   throw new Error(`Codex 結果回報格式錯誤: ${detail}`);
@@ -72,26 +60,7 @@ function assertStringArray(value, label) {
   }
 }
 
-function selectedTaskResultFormat(env = process.env) {
-  return env.TASK_RESULT_FORMAT === "detailed" ? "detailed" : "minimal";
-}
-
-function schemaForFormat(format) {
-  return format === "detailed" ? DETAILED_TASK_RESULT_SCHEMA : MINIMAL_TASK_RESULT_SCHEMA;
-}
-
-function detectTaskResultFormat(result) {
-  return result && Object.prototype.hasOwnProperty.call(result, "result") ? "minimal" : "detailed";
-}
-
-function validateTaskResult(result, format = detectTaskResultFormat(result)) {
-  if (format === "minimal") {
-    assertExactKeys(result, ["status", "result"], "結果");
-    if (!MINIMAL_STATUSES.includes(result.status)) fail(`未知 status: ${result.status}`);
-    if (typeof result.result !== "string" || !result.result.trim()) fail("result 不可為空");
-    return result;
-  }
-
+function validateTaskResult(result) {
   assertExactKeys(result, REQUIRED_KEYS, "結果");
   if (!RESULT_STATUSES.includes(result.status)) fail(`未知 status: ${result.status}`);
   if (typeof result.summary !== "string" || !result.summary.trim()) fail("summary 不可為空");
@@ -111,11 +80,11 @@ function validateTaskResult(result, format = detectTaskResultFormat(result)) {
   return result;
 }
 
-function parseTaskResult(stdout, format) {
+function parseTaskResult(stdout) {
   let result;
   try { result = JSON.parse(String(stdout || "")); }
   catch (error) { fail(`不是合法 JSON (${error.message})`); }
-  return validateTaskResult(result, format);
+  return validateTaskResult(result);
 }
 
 function queueStatus(resultStatus) {
@@ -124,14 +93,4 @@ function queueStatus(resultStatus) {
   return mapping[resultStatus];
 }
 
-module.exports = {
-  MINIMAL_TASK_RESULT_SCHEMA,
-  DETAILED_TASK_RESULT_SCHEMA,
-  TASK_RESULT_SCHEMA,
-  detectTaskResultFormat,
-  parseTaskResult,
-  queueStatus,
-  schemaForFormat,
-  selectedTaskResultFormat,
-  validateTaskResult,
-};
+module.exports = { TASK_RESULT_SCHEMA, parseTaskResult, queueStatus, validateTaskResult };
