@@ -16,14 +16,11 @@ const DEFS = {
     prompt: (task) => {
       const command = String((task && task.command) || "");
       return [
-        "你正在規則指定的目標專案中執行已核准的無人值守任務。",
-        "請把下方 command 視為使用者直接在此專案提出且已核准執行的要求。",
-        "先依此專案自身的 AGENTS.md、instructions 與 skills 判斷任務是否已完成。",
-        "若已完成，提供專案找到的證據並回報 success，不得重複修改。",
-        "若未完成，直接依專案自身流程完整執行，不得停在計畫或等待下一輪核准。",
-        "無法完成時回報 failed；只有實際完成部分產出時才回報 partial。",
+        "你正在規則指定的目標專案中執行任務。",
+        "請把下方 command 視為使用者直接在此專案提出的要求。",
+        "依此專案自身的 AGENTS.md、instructions 與 skills 完整執行；element-bot 不介入專案如何修改、驗證或提交。",
         "command：" + command,
-        "完成後依指定 schema 回報；結果內容不得包含 token、密碼或其他秘密。",
+        "完成後依指定 schema 回報實際結果與證據；不得在回報中包含 token、密碼或其他秘密內容。",
       ].join("\n");
     },
     verifyArgs: null,

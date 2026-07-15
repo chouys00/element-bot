@@ -1,7 +1,7 @@
 "use strict";
 const { spawnSync } = require("child_process");
 const { runCodex: invokeCodex } = require("../codexRunner");
-const { schemaForFormat, selectedTaskResultFormat } = require("./taskResult");
+const { TASK_RESULT_SCHEMA } = require("./taskResult");
 
 // 來源須在 git 控制下且無未提交改動(改檔任務的安全網)。
 function gitClean(srcDir) {
@@ -42,17 +42,8 @@ function gitCommitsSince(srcDir, baseHead) {
 }
 
 // 執行期 provider 邊界只存在於 codexRunner；ops 不自行組合 CLI 參數。
-function resultFormat() {
-  return selectedTaskResultFormat();
-}
-
 function runCodex(prompt, projectDir) {
-  const format = resultFormat();
-  return invokeCodex(prompt, {
-    mode: "execute",
-    cwd: projectDir,
-    outputSchema: schemaForFormat(format),
-  });
+  return invokeCodex(prompt, { mode: "execute", cwd: projectDir, outputSchema: TASK_RESULT_SCHEMA });
 }
 
 // 跑 verify 腳本,從輸出解析 errors=/warnings=。
@@ -65,4 +56,4 @@ function runVerify(args) {
   return { errors: parseInt(m[1], 10), warnings: parseInt(m[2], 10) };
 }
 
-module.exports = { gitClean, gitChanged, gitHead, gitCommitsSince, resultFormat, runCodex, runVerify };
+module.exports = { gitClean, gitChanged, gitHead, gitCommitsSince, runCodex, runVerify };

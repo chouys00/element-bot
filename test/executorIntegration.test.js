@@ -30,7 +30,6 @@ const codexResult = JSON.stringify({
     const calls = [];
     const ops = {
       gitHead: () => { calls.push("head"); return "abc"; },
-      resultFormat: () => "detailed",
       runCodex: () => { calls.push("codex"); return codexResult; },
     };
     await agentExecutor(TASK, { queueDir: q, id: "f1", logger: silentLogger, ops });
@@ -53,7 +52,6 @@ const codexResult = JSON.stringify({
     const calls = [];
     const ops = {
       gitHead: () => { calls.push("head"); return "abc"; },
-      resultFormat: () => "detailed",
       runCodex: () => { calls.push("codex"); return codexResult; },
     };
     await agentExecutor(TASK, { queueDir: q, id: "f2", logger: silentLogger, ops });
