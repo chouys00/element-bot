@@ -95,6 +95,16 @@ function freshQueue() {
   fs.rmSync(q, { recursive: true, force: true });
 }
 
+{
+  const q = freshQueue();
+  fs.mkdirSync(path.join(q, "logs"), { recursive: true });
+  fs.writeFileSync(path.join(q, "logs", "generic.log"),
+    JSON.stringify({ status: "success", output: "已完成；外部記錄 123。" }) + "\n", "utf8");
+  const payload = writeNotifyFile({ queueDir: q, id: "generic", status: "done", task: { rule: "通用任務", source: {} } });
+  ok("generic 通知使用完整 output", payload.summary === "已完成；外部記錄 123。");
+  fs.rmSync(q, { recursive: true, force: true });
+}
+
 // formatNotify:無 rule 用 task 名;source 缺房間 → 未知房間;無參數也不丟錯
 {
   const text = formatNotify({ status: "done", task: "some-skill", source: {}, summary: "" });

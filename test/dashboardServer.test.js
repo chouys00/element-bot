@@ -52,6 +52,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const htmlText = await html.text();
   ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
   ok("dashboard 顯示結構化驗證與提交證據", htmlText.includes("修改／產出") && htmlText.includes("驗證") && htmlText.includes("提交"));
+  ok("dashboard 保留 Codex 輸出欄", htmlText.includes("執行輸出 (Codex)"));
+  ok("dashboard 辨識 generic output", htmlText.includes("typeof sum.output === \"string\""));
+  ok("generic 不重複顯示結果文字", htmlText.includes("const isGeneric") && htmlText.includes("isGeneric ? \"\""));
 
   const traversal = await fetch(`${base}/api/tasks/..%2F..%2Fsecret/log`);
   ok("log 端點擋路徑穿越(400)", traversal.status === 400);

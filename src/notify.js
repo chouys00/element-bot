@@ -9,11 +9,13 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n).trimEnd() + " …" : s;
 }
 
-// 從任務 log 最後一行的 summary 取成功摘要(由 summarize 步驟用固定程式碼產出,非 AI,不耗 token)。
+// 從任務 log 由後往前取 generic output，舊格式則退回 summary；全程不新增 AI 呼叫。
 function readSummaryFromLog(queueDir, id) {
   const lines = readLogLines(queueDir, id);
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i] && typeof lines[i].summary === "string" && lines[i].summary) return lines[i].summary;
+    const line = lines[i];
+    if (line && typeof line.output === "string" && line.output) return line.output;
+    if (line && typeof line.summary === "string" && line.summary) return line.summary;
   }
   return "";
 }
