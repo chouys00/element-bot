@@ -32,6 +32,10 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   }
   ok("skill-dispatch prompt 帶入指令", def.prompt({ command: "/i18n pages/activity" }).includes("/i18n pages/activity"));
   const prompt = def.prompt({ command: "https://zentao.example/bug-view-1.html" });
+  ok("任務已預先核准", prompt.includes("已核准"));
+  ok("先判斷是否已完成", prompt.includes("先") && prompt.includes("是否已完成"));
+  ok("已完成不得重複修改", prompt.includes("不得重複修改"));
+  ok("不得等待下一輪核准", prompt.includes("不得停在計畫") && prompt.includes("等待"));
   ok("prompt 將 command 視為專案內直接輸入", prompt.includes("直接在此專案"));
   ok("prompt 要求依專案 instructions 與 skills 執行", prompt.includes("instructions") && prompt.includes("skills"));
   ok("prompt 要求結構化回報", prompt.includes("指定 schema"));

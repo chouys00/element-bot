@@ -2,7 +2,7 @@
 const path = require("path");
 const { getTaskDef } = require("../taskDefs");
 const { readJsonSafe, writeJsonAtomic } = require("../fsUtils");
-const { parseTaskResult, queueStatus, validateTaskResult } = require("./taskResult");
+const { parseTaskResult, queueStatus, selectedTaskResultFormat, validateTaskResult } = require("./taskResult");
 
 const AI_OUTPUT_MAX = 8000;
 const RESULT_FILE = "task-result.json";
@@ -23,8 +23,9 @@ function make(ops) {
       const def = getTaskDef(task.task);
       const src = def.sourceDir(task);
       emit({ step: "ai_run", status: "run", note: "派發 Codex 依目標專案自身設定獨立執行" });
+      const format = ops.resultFormat ? ops.resultFormat() : selectedTaskResultFormat();
       const output = await ops.runCodex(def.prompt(task), src);
-      const result = parseTaskResult(output);
+      const result = parseTaskResult(output, format);
       if (workDir) writeJsonAtomic(path.join(workDir, RESULT_FILE), result);
       if (shared) shared.taskResult = result;
       if (typeof output === "string" && output.trim()) {
@@ -45,7 +46,7 @@ function make(ops) {
       return {
         ...result,
         queueStatus: queueStatus(result.status),
-        produced: result.changes,
+        produced: Array.isArray(result.changes) ? result.changes : [],
         openPath: src,
       };
     },

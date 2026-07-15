@@ -9,6 +9,7 @@ const {
   schemaForFormat,
   selectedTaskResultFormat,
 } = require("../src/executors/taskResult");
+const ops = require("../src/executors/ops");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
@@ -42,6 +43,15 @@ assert.throws(
 passed++;
 ok("預設 minimal", selectedTaskResultFormat({}) === "minimal");
 ok("可切 detailed", selectedTaskResultFormat({ TASK_RESULT_FORMAT: "detailed" }) === "detailed");
+{
+  const original = process.env.TASK_RESULT_FORMAT;
+  delete process.env.TASK_RESULT_FORMAT;
+  ok("ops 預設使用 minimal", ops.resultFormat() === "minimal");
+  process.env.TASK_RESULT_FORMAT = "detailed";
+  ok("ops 可選 detailed", ops.resultFormat() === "detailed");
+  if (original === undefined) delete process.env.TASK_RESULT_FORMAT;
+  else process.env.TASK_RESULT_FORMAT = original;
+}
 ok("格式選到對應 schema", schemaForFormat("minimal") === MINIMAL_TASK_RESULT_SCHEMA && schemaForFormat("detailed") === DETAILED_TASK_RESULT_SCHEMA);
 ok("success 映射 done", queueStatus("success") === "done");
 ok("failed 映射 failed", queueStatus("failed") === "failed");
