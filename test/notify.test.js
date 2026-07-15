@@ -95,16 +95,6 @@ function freshQueue() {
   fs.rmSync(q, { recursive: true, force: true });
 }
 
-{
-  const q = freshQueue();
-  fs.mkdirSync(path.join(q, "logs"), { recursive: true });
-  fs.writeFileSync(path.join(q, "logs", "minimal.log"),
-    '{"status":"success","result":"已完成過，無需再次修改"}\n', "utf8");
-  const payload = writeNotifyFile({ queueDir: q, id: "minimal", status: "done", task: { rule: "日常修改", source: {} } });
-  ok("minimal 通知使用 result", payload.summary === "已完成過，無需再次修改");
-  fs.rmSync(q, { recursive: true, force: true });
-}
-
 // formatNotify:無 rule 用 task 名;source 缺房間 → 未知房間;無參數也不丟錯
 {
   const text = formatNotify({ status: "done", task: "some-skill", source: {}, summary: "" });

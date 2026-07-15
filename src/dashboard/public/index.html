@@ -262,24 +262,16 @@ async function renderDetail() {
   const warningsHtml = sum && Array.isArray(sum.warnings) && sum.warnings.length
     ? sum.warnings.map((item) => `<div style="color:#f0b072">⚠ ${esc(item)}</div>`).join("")
     : "";
-  const needsReviewHtml = sum && Array.isArray(sum.needsReview) && sum.needsReview.length
-    ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("")
-    : "";
-  const resultText = sum && typeof sum.result === "string"
-    ? sum.result
-    : sum && (sum.summary || sum.message || "");
-  const isMinimal = !!(sum && typeof sum.result === "string");
   const sumHtml = sum
-    ? `<div class="k" style="margin-top:8px">結果</div><div>${esc(resultText)}</div>` +
-      (isMinimal ? "" : needsReviewHtml + changesHtml + validationHtml + commitsHtml + warningsHtml)
+    ? `<div class="k" style="margin-top:8px">結果</div><div>${esc(sum.status)} — ${esc(sum.summary || sum.message || "")}</div>` +
+      ((Array.isArray(sum.needsReview) && sum.needsReview.length)
+        ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "") +
+      changesHtml + validationHtml + commitsHtml + warningsHtml
     : "";
 
   // Codex 在專案內的實際輸出(ai_run 步驟),讓「結果」不只有一行彙總。
   const aiHtml = prog.aiOutput
     ? `<div class="k" style="margin-top:8px">執行輸出 (Codex)</div><pre>${esc(prog.aiOutput)}</pre>`
-    : "";
-  const technicalHtml = (prog.steps.length || prog.aiOutput)
-    ? `<details style="margin-top:8px"><summary class="k">技術詳情</summary>${stepsHtml}${aiHtml}</details>`
     : "";
 
   // LLM 判斷紀錄(judging/judged):判斷中/不觸發/失敗與失敗原因。
@@ -315,7 +307,9 @@ async function renderDetail() {
     ${dispatchHtml}
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
     ${judgeHtml}
-    ${sumHtml}${technicalHtml}${actHtml}`;
+    ${stepsHtml}
+    ${sumHtml}
+    ${aiHtml}${actHtml}`;
 
   // 內容與目前顯示的完全相同(同一任務、HTML 沒變)→ 不動 DOM,保住 scrollTop,畫面不跳頂。
   const sameTask = lastDetailKey === selectedId;
