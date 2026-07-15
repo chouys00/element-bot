@@ -19,8 +19,7 @@ function freshQueue() {
 const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", command: "把背景改成紅色" };
 const findSummary = (lines) => lines.find((o) => typeof o.status === "string" && !o.step && !o.steps);
 const codexResult = JSON.stringify({
-  status: "success", summary: "完成", changes: ["index.html"],
-  validation: [], commits: [], warnings: [],
+  status: "success", output: "背景已經是紅色，不需重複修改。",
 });
 
 (async () => {
@@ -30,13 +29,18 @@ const codexResult = JSON.stringify({
     const calls = [];
     const ops = {
       gitHead: () => { calls.push("head"); return "abc"; },
-      runCodex: () => { calls.push("codex"); return codexResult; },
+      resultMode: () => { calls.push("mode"); return "generic"; },
+      runCodex: (prompt, _src, mode) => {
+        calls.push("codex");
+        ok("完整鏈使用 generic prompt 與 mode", prompt.includes("無人值守") && mode === "generic");
+        return codexResult;
+      },
     };
     await agentExecutor(TASK, { queueDir: q, id: "f1", logger: silentLogger, ops });
-    ok("完整鏈只觀測 HEAD 後派 Codex", calls.join(",") === "head,codex");
+    ok("完整鏈只選一次模式並派一次 Codex", calls.join(",") === "head,mode,codex");
     const summary = findSummary(readLogLines(q, "f1"));
     ok("summary success", summary && summary.status === "success");
-    ok("summary 含改動檔", summary && summary.produced.includes("index.html"));
+    ok("generic summary 不捏造改動檔", summary && Array.isArray(summary.produced) && summary.produced.length === 0);
     const st = readState(path.join(q, "work", "f1"));
     ok("state 全 ok", st && Object.values(st.steps).every((v) => v === "ok"));
     fs.rmSync(q, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
@@ -52,6 +56,7 @@ const codexResult = JSON.stringify({
     const calls = [];
     const ops = {
       gitHead: () => { calls.push("head"); return "abc"; },
+      resultMode: () => { calls.push("mode"); return "generic"; },
       runCodex: () => { calls.push("codex"); return codexResult; },
     };
     await agentExecutor(TASK, { queueDir: q, id: "f2", logger: silentLogger, ops });

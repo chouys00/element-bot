@@ -42,6 +42,15 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     ok(`prompt 不含派發器政策: ${forbidden}`, !prompt.includes(forbidden));
   }
   ok("skill-dispatch 不跑 verify(verifyArgs null)", def.verifyArgs == null);
+
+  const genericPrompt = def.prompt(
+    { command: "處理這項要求" },
+    { resultMode: "generic" }
+  );
+  ok("generic 任務已核准", genericPrompt.includes("已核准") && genericPrompt.includes("無人值守"));
+  ok("不得自行等待確認", genericPrompt.includes("不得自行增加") && genericPrompt.includes("再次確認"));
+  ok("已完成回報成功且不重做", genericPrompt.includes("已經完成") && genericPrompt.includes("success") && genericPrompt.includes("不重複"));
+  ok("沒有任務類型假設", !/Git|commit|Jenkins|客服|聊天室|修改檔案/.test(genericPrompt));
 }
 
 {

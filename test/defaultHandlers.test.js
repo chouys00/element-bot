@@ -32,7 +32,7 @@ function freshWork() {
     const workDir = freshWork();
     const emitted = [];
     const expected = result("success", "分析完成，不需改檔");
-    const h = make({ runCodex: async () => JSON.stringify(expected) });
+    const h = make({ resultMode: () => "legacy", runCodex: async () => JSON.stringify(expected) });
     await h.ai_run({ workDir, task: TASK, emit: (o) => emitted.push(o), shared: {} });
     ok("ai_run 持久化結構化結果", JSON.parse(fs.readFileSync(path.join(workDir, "task-result.json"), "utf8")).summary === expected.summary);
     ok("ai_run 保留 Codex 輸出供 dashboard 顯示", emitted.some((o) => typeof o.ai_output === "string" && o.ai_output.includes(expected.summary)));
@@ -44,7 +44,7 @@ function freshWork() {
 
   for (const [status, expectedQueue] of [["failed", "failed"], ["blocked", "blocked"], ["partial", "review"]]) {
     const workDir = freshWork();
-    const h = make({ runCodex: async () => JSON.stringify(result(status, status)) });
+    const h = make({ resultMode: () => "legacy", runCodex: async () => JSON.stringify(result(status, status)) });
     await h.ai_run({ workDir, task: TASK, emit: noop, shared: {} });
     const sum = await h.summarize({ workDir, task: TASK, emit: noop, shared: {} });
     ok(`${status} 映射 ${expectedQueue}`, sum.queueStatus === expectedQueue && sum.status === status);
@@ -53,7 +53,7 @@ function freshWork() {
 
   {
     const workDir = freshWork();
-    const h = make({ runCodex: async () => "not json" });
+    const h = make({ resultMode: () => "legacy", runCodex: async () => "not json" });
     await assert.rejects(() => h.ai_run({ workDir, task: TASK, emit: noop, shared: {} }), /結果回報格式錯誤/);
     passed++;
     fs.rmSync(workDir, { recursive: true, force: true });
@@ -62,10 +62,27 @@ function freshWork() {
   {
     const workDir = freshWork();
     const expected = { ...result("success"), changes: ["src/a.js"], commits: [{ hash: "abc1234", message: "fix: a" }] };
-    const h = make({ runCodex: async () => JSON.stringify(expected) });
+    const h = make({ resultMode: () => "legacy", runCodex: async () => JSON.stringify(expected) });
     await h.ai_run({ workDir, task: TASK, emit: noop, shared: {} });
     const sum = await h.summarize({ workDir, task: TASK, emit: noop, shared: {} });
     ok("summarize 回傳修改與 commit 證據", sum.produced[0] === "src/a.js" && sum.commits[0].hash === "abc1234");
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+
+  {
+    const workDir = freshWork();
+    const expected = { status: "success", output: "先前已完成，無需重複操作；證據：記錄 123。" };
+    const emitted = [];
+    const h = make({
+      resultMode: () => "generic",
+      runCodex: async () => JSON.stringify(expected),
+    });
+    await h.ai_run({ workDir, task: TASK, emit: (o) => emitted.push(o), shared: {} });
+    const sum = await h.summarize({ workDir, task: TASK, emit: noop, shared: {} });
+    ok("generic 原樣持久化", JSON.parse(fs.readFileSync(path.join(workDir, "task-result.json"), "utf8")).output === expected.output);
+    ok("generic 完整輸出交給 dashboard", emitted.some((o) => o.ai_output === expected.output));
+    ok("沒有改動仍為 done", sum.status === "success" && sum.queueStatus === "done");
+    ok("generic 不捏造 produced", Array.isArray(sum.produced) && sum.produced.length === 0);
     fs.rmSync(workDir, { recursive: true, force: true });
   }
 

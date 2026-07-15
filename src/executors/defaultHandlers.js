@@ -2,7 +2,7 @@
 const path = require("path");
 const { getTaskDef } = require("../taskDefs");
 const { readJsonSafe, writeJsonAtomic } = require("../fsUtils");
-const { parseTaskResult, queueStatus, validateTaskResult } = require("./taskResult");
+const { parseTaskResult, queueStatus, selectedTaskResultMode, validateTaskResult } = require("./taskResult");
 
 const AI_OUTPUT_MAX = 8000;
 const RESULT_FILE = "task-result.json";
@@ -23,12 +23,16 @@ function make(ops) {
       const def = getTaskDef(task.task);
       const src = def.sourceDir(task);
       emit({ step: "ai_run", status: "run", note: "派發 Codex 依目標專案自身設定獨立執行" });
-      const output = await ops.runCodex(def.prompt(task), src);
-      const result = parseTaskResult(output);
+      const mode = ops.resultMode ? ops.resultMode() : selectedTaskResultMode();
+      const output = await ops.runCodex(def.prompt(task, { resultMode: mode }), src, mode);
+      const result = parseTaskResult(output, mode);
       if (workDir) writeJsonAtomic(path.join(workDir, RESULT_FILE), result);
       if (shared) shared.taskResult = result;
-      if (typeof output === "string" && output.trim()) {
-        emit({ ai_output: output.length > AI_OUTPUT_MAX ? output.slice(-AI_OUTPUT_MAX) : output });
+      const displayOutput = mode === "generic" ? result.output : output;
+      if (typeof displayOutput === "string" && displayOutput.trim()) {
+        emit({ ai_output: mode === "generic" || displayOutput.length <= AI_OUTPUT_MAX
+          ? displayOutput
+          : displayOutput.slice(-AI_OUTPUT_MAX) });
       }
     },
 
@@ -45,7 +49,7 @@ function make(ops) {
       return {
         ...result,
         queueStatus: queueStatus(result.status),
-        produced: result.changes,
+        produced: Array.isArray(result.changes) ? result.changes : [],
         openPath: src,
       };
     },
