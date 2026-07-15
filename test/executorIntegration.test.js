@@ -37,7 +37,7 @@ const codexResult = JSON.stringify({
       },
     };
     await agentExecutor(TASK, { queueDir: q, id: "f1", logger: silentLogger, ops });
-    ok("完整鏈只選一次模式並派一次 Codex", calls.join(",") === "head,mode,codex");
+    ok("generic 完整鏈不讀 HEAD，只選一次模式並派一次 Codex", calls.join(",") === "mode,codex");
     const summary = findSummary(readLogLines(q, "f1"));
     ok("summary success", summary && summary.status === "success");
     ok("generic summary 不捏造改動檔", summary && Array.isArray(summary.produced) && summary.produced.length === 0);

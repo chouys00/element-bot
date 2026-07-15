@@ -11,10 +11,12 @@ function make(ops) {
   ops = ops || require("./ops");
 
   return {
-    async prepare({ workDir, task, emit }) {
+    async prepare({ workDir, task, emit, shared }) {
       const def = getTaskDef(task.task);
       const src = def.sourceDir(task);
-      const head = ops.gitHead ? ops.gitHead(src) : null;
+      const mode = ops.resultMode ? ops.resultMode() : selectedTaskResultMode();
+      if (shared) shared.resultMode = mode;
+      const head = mode === "legacy" && ops.gitHead ? ops.gitHead(src) : null;
       if (workDir && head) writeJsonAtomic(path.join(workDir, "base.json"), { head });
       emit({ step: "prepare", status: "run", note: "目標專案已確認，流程與工作區狀態交由專案自身管理" });
     },
@@ -23,7 +25,7 @@ function make(ops) {
       const def = getTaskDef(task.task);
       const src = def.sourceDir(task);
       emit({ step: "ai_run", status: "run", note: "派發 Codex 依目標專案自身設定獨立執行" });
-      const mode = ops.resultMode ? ops.resultMode() : selectedTaskResultMode();
+      const mode = (shared && shared.resultMode) || (ops.resultMode ? ops.resultMode() : selectedTaskResultMode());
       const output = await ops.runCodex(def.prompt(task, { resultMode: mode }), src, mode);
       const result = parseTaskResult(output, mode);
       if (workDir) writeJsonAtomic(path.join(workDir, RESULT_FILE), result);

@@ -21,10 +21,31 @@ function freshWork() {
   {
     let cleanCalled = false;
     const workDir = freshWork();
-    const h = make({ gitClean: () => { cleanCalled = true; }, gitHead: () => "abc123" });
+    const h = make({
+      resultMode: () => "legacy",
+      gitClean: () => { cleanCalled = true; },
+      gitHead: () => "abc123",
+    });
     await h.prepare({ workDir, task: TASK, emit: noop, shared: {} });
     ok("prepare 不要求 git clean", cleanCalled === false);
-    ok("prepare 可記錄起始 HEAD 作觀測", JSON.parse(fs.readFileSync(path.join(workDir, "base.json"), "utf8")).head === "abc123");
+    ok("legacy prepare 可記錄起始 HEAD 作觀測", JSON.parse(fs.readFileSync(path.join(workDir, "base.json"), "utf8")).head === "abc123");
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+
+  {
+    let gitHeadCalls = 0;
+    const workDir = freshWork();
+    const h = make({
+      resultMode: () => "generic",
+      gitHead: () => {
+        gitHeadCalls++;
+        throw new Error("generic 不得讀取 git HEAD");
+      },
+    });
+    await assert.doesNotReject(() => h.prepare({ workDir, task: TASK, emit: noop, shared: {} }));
+    passed++;
+    ok("generic prepare 不呼叫 gitHead", gitHeadCalls === 0);
+    ok("generic prepare 不寫 base.json", !fs.existsSync(path.join(workDir, "base.json")));
     fs.rmSync(workDir, { recursive: true, force: true });
   }
 
