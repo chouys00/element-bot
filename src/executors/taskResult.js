@@ -3,8 +3,9 @@
 const RESULT_STATUSES = ["success", "failed", "blocked", "partial"];
 const VALIDATION_STATUSES = ["passed", "failed", "skipped", "not_applicable"];
 const REQUIRED_KEYS = ["status", "summary", "changes", "validation", "commits", "warnings"];
+const GENERIC_KEYS = ["status", "output"];
 
-const TASK_RESULT_SCHEMA = {
+const LEGACY_TASK_RESULT_SCHEMA = {
   type: "object",
   properties: {
     status: { type: "string", enum: RESULT_STATUSES },
@@ -40,6 +41,17 @@ const TASK_RESULT_SCHEMA = {
   required: REQUIRED_KEYS,
   additionalProperties: false,
 };
+const TASK_RESULT_SCHEMA = LEGACY_TASK_RESULT_SCHEMA;
+
+const GENERIC_TASK_RESULT_SCHEMA = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: RESULT_STATUSES },
+    output: { type: "string", minLength: 1 },
+  },
+  required: GENERIC_KEYS,
+  additionalProperties: false,
+};
 
 function fail(detail) {
   throw new Error(`Codex 結果回報格式錯誤: ${detail}`);
@@ -60,7 +72,19 @@ function assertStringArray(value, label) {
   }
 }
 
-function validateTaskResult(result) {
+function selectedTaskResultMode(env = process.env) {
+  return env.TASK_RESULT_MODE === "legacy" ? "legacy" : "generic";
+}
+
+function schemaForMode(mode) {
+  return mode === "legacy" ? LEGACY_TASK_RESULT_SCHEMA : GENERIC_TASK_RESULT_SCHEMA;
+}
+
+function detectTaskResultMode(result) {
+  return result && Object.prototype.hasOwnProperty.call(result, "output") ? "generic" : "legacy";
+}
+
+function validateLegacyTaskResult(result) {
   assertExactKeys(result, REQUIRED_KEYS, "結果");
   if (!RESULT_STATUSES.includes(result.status)) fail(`未知 status: ${result.status}`);
   if (typeof result.summary !== "string" || !result.summary.trim()) fail("summary 不可為空");
@@ -80,11 +104,21 @@ function validateTaskResult(result) {
   return result;
 }
 
-function parseTaskResult(stdout) {
+function validateTaskResult(result, mode = detectTaskResultMode(result)) {
+  if (mode === "generic") {
+    assertExactKeys(result, GENERIC_KEYS, "結果");
+    if (!RESULT_STATUSES.includes(result.status)) fail(`未知 status: ${result.status}`);
+    if (typeof result.output !== "string" || !result.output.trim()) fail("output 不可為空");
+    return result;
+  }
+  return validateLegacyTaskResult(result);
+}
+
+function parseTaskResult(stdout, mode) {
   let result;
   try { result = JSON.parse(String(stdout || "")); }
   catch (error) { fail(`不是合法 JSON (${error.message})`); }
-  return validateTaskResult(result);
+  return validateTaskResult(result, mode || detectTaskResultMode(result));
 }
 
 function queueStatus(resultStatus) {
@@ -93,4 +127,14 @@ function queueStatus(resultStatus) {
   return mapping[resultStatus];
 }
 
-module.exports = { TASK_RESULT_SCHEMA, parseTaskResult, queueStatus, validateTaskResult };
+module.exports = {
+  GENERIC_TASK_RESULT_SCHEMA,
+  LEGACY_TASK_RESULT_SCHEMA,
+  TASK_RESULT_SCHEMA,
+  detectTaskResultMode,
+  parseTaskResult,
+  queueStatus,
+  schemaForMode,
+  selectedTaskResultMode,
+  validateTaskResult,
+};

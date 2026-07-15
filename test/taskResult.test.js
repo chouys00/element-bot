@@ -1,6 +1,15 @@
 "use strict";
 const assert = require("assert");
-const { TASK_RESULT_SCHEMA, parseTaskResult, queueStatus } = require("../src/executors/taskResult");
+const {
+  GENERIC_TASK_RESULT_SCHEMA,
+  LEGACY_TASK_RESULT_SCHEMA,
+  TASK_RESULT_SCHEMA,
+  detectTaskResultMode,
+  parseTaskResult,
+  queueStatus,
+  schemaForMode,
+  selectedTaskResultMode,
+} = require("../src/executors/taskResult");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
@@ -13,6 +22,27 @@ const valid = {
   commits: [],
   warnings: [],
 };
+
+const generic = { status: "success", output: "任務先前已完成，證據為外部識別碼 123。" };
+assert.deepStrictEqual(parseTaskResult(JSON.stringify(generic), "generic"), generic);
+passed++;
+ok("generic 可自動辨識", detectTaskResultMode(generic) === "generic");
+ok("預設 generic", selectedTaskResultMode({}) === "generic");
+ok("可切回 legacy", selectedTaskResultMode({ TASK_RESULT_MODE: "legacy" }) === "legacy");
+ok("模式取得正確 schema",
+  schemaForMode("generic") === GENERIC_TASK_RESULT_SCHEMA &&
+  schemaForMode("legacy") === LEGACY_TASK_RESULT_SCHEMA);
+assert.deepStrictEqual(GENERIC_TASK_RESULT_SCHEMA.required, ["status", "output"]);
+passed++;
+assert.throws(
+  () => parseTaskResult(JSON.stringify({ ...generic, changes: [] }), "generic"),
+  /結果回報格式錯誤/
+);
+passed++;
+for (const status of ["failed", "partial", "blocked"]) {
+  assert.deepStrictEqual(parseTaskResult(JSON.stringify({ status, output: status }), "generic"), { status, output: status });
+  passed++;
+}
 
 assert.deepStrictEqual(parseTaskResult(JSON.stringify(valid)), valid);
 passed++;
