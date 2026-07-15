@@ -8,7 +8,7 @@ Element-bot 只支援 Codex。所有 CLI 細節集中於 `src/codexRunner.js`：
 | --- | --- | --- |
 | judge | `codex exec` | `read-only`、無網路 |
 | probe | `codex exec` | `read-only`、無網路 |
-| execute | `codex exec` | `workspace-write`、開啟網路 |
+| execute | `codex exec` | `danger-full-access`、開啟網路 |
 
 每次執行使用 `--ask-for-approval never`、`--ephemeral`、`--color never`，prompt 由 stdin 傳入。成功時 stdout 是最終回答；stderr 只作診斷，失敗時才會以限制長度附入錯誤。
 

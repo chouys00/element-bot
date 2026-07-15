@@ -197,19 +197,16 @@ function renderDryResult(results) {
       unmonitored: `<span class="err" title="${esc(rm.detail)}">❌ 未監聽</span>`,
       none: `<span class="muted">—</span>`,
     })[rm.status] || `<span class="muted">—</span>`;
-    // 專案健檢(skill-dispatch):projectCheck 實際查三件事(路徑存在/是否 git 倉庫/git 是否乾淨),
-    // title 逐項列出,不只顯示彙總後的單一狀態文字。
+    // 專案健檢(skill-dispatch):只確認路徑存在且是目錄。
     let pcCell = `<span class="muted">—</span>`;
     let pcHealthy = true;
     if (r.project_check) {
       const c = r.project_check;
       const detail = [
         `路徑存在:${c.exists ? "✅ 是" : "❌ 否"}`,
-        `git 倉庫:${c.is_git ? "✅ 是" : "❌ 否"}`,
-        `無未提交改動:${c.clean ? "✅ 是" : "❌ 否"}`,
+        `是目錄:${c.directory ? "✅ 是" : "❌ 否"}`,
       ].join("\n");
-      if (c.clean) pcCell = `<span class="ok" title="${esc(detail)}">✅ 乾淨</span>`;
-      else if (c.exists && c.is_git) pcCell = `<span class="llm" title="${esc(detail)}">⚠️ 有改動</span>`;
+      if (c.exists && c.directory) pcCell = `<span class="ok" title="${esc(detail)}">✅ 可用</span>`;
       else { pcCell = `<span class="err" title="${esc(detail)}">❌ ${esc(c.detail)}</span>`; pcHealthy = false; }
     }
     // 送出指令(固定=真實;帶佔位=模板,需實跑才有真實值)

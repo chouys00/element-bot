@@ -310,9 +310,10 @@ async function renderDetail() {
     ${dispatchHtml}
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
     ${judgeHtml}
+    ${isGeneric ? aiHtml : ""}
     ${stepsHtml}
     ${sumHtml}
-    ${aiHtml}${actHtml}`;
+    ${isGeneric ? "" : aiHtml}${actHtml}`;
 
   // 內容與目前顯示的完全相同(同一任務、HTML 沒變)→ 不動 DOM,保住 scrollTop,畫面不跳頂。
   const sameTask = lastDetailKey === selectedId;

@@ -105,7 +105,7 @@ function createServer(deps) {
           }
         }
         // 實跑連通測試(單條 skill-dispatch 規則):judge 抽參 → 填指令 → 派 Codex 唯讀探測。
-        // 會花一點 quota,故單條、按需。路徑不健康(不存在/非 git)先擋,不浪費 Codex 呼叫。
+        // 會花一點 quota,故單條、按需。路徑不存在或不是目錄時先擋,不浪費 Codex 呼叫。
         if (p === "/api/rules/probe") {
           let raw;
           try { raw = await readBody(req); } catch (_) { res.writeHead(413); return res.end("body too large"); }
@@ -119,7 +119,7 @@ function createServer(deps) {
           if (!rule) { res.writeHead(404); return res.end("no such rule"); }
           if (rule.task !== "skill-dispatch") { res.writeHead(400); return res.end("only skill-dispatch can probe"); }
           const chk = projectCheck(rule.project_path);
-          if (!chk.exists || !chk.is_git) return sendJson(res, 200, { blocked: true, project_check: chk });
+          if (!chk.exists || !chk.directory) return sendJson(res, 200, { blocked: true, project_check: chk });
           try {
             const result = await probeRule(rule, body);
             return sendJson(res, 200, { ...result, project_check: chk });

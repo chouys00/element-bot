@@ -5,10 +5,8 @@ const { projectCheck } = require("../src/projectCheck");
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
 
-// 假注入:existsFn 控制路徑存在與否;runGit 模擬 git status --porcelain 結果。
-const gitClean = () => ({ status: 0, stdout: "" });
-const gitDirty = () => ({ status: 0, stdout: " M a.js\n" });
-const gitFail = () => ({ status: 128, stdout: "", stderr: "not a git repo" });
+const directoryStat = { isDirectory: () => true };
+const fileStat = { isDirectory: () => false };
 
 {
   const r = projectCheck("", {});
@@ -16,19 +14,19 @@ const gitFail = () => ({ status: 128, stdout: "", stderr: "not a git repo" });
 }
 {
   const r = projectCheck("D:/nope", { existsFn: () => false });
-  ok("路徑不存在 → exists false", r.exists === false && r.detail.includes("不存在"));
+  ok("路徑不存在 → exists/directory false", r.exists === false && r.directory === false && r.detail.includes("不存在"));
 }
 {
-  const r = projectCheck("D:/x", { existsFn: () => true, runGit: gitFail });
-  ok("存在但非 git → is_git false", r.exists === true && r.is_git === false && r.clean === false);
+  const r = projectCheck("D:/file", { existsFn: () => true, statFn: () => fileStat });
+  ok("路徑存在但非目錄 → directory false", r.exists === true && r.directory === false && r.detail.includes("不是目錄"));
 }
 {
-  const r = projectCheck("D:/x", { existsFn: () => true, runGit: gitDirty });
-  ok("git 有改動 → clean false", r.exists === true && r.is_git === true && r.clean === false && r.detail.includes("未提交"));
+  const r = projectCheck("D:/dir", { existsFn: () => true, statFn: () => directoryStat });
+  ok("路徑存在且是目錄 → 全 true", r.exists === true && r.directory === true && r.detail.includes("目錄"));
 }
 {
-  const r = projectCheck("D:/x", { existsFn: () => true, runGit: gitClean });
-  ok("git 乾淨 → 全 true", r.exists === true && r.is_git === true && r.clean === true);
+  const source = require("fs").readFileSync(require.resolve("../src/projectCheck"), "utf8");
+  ok("projectCheck 不啟動 git", !/child_process|spawnSync|\bgit\b/i.test(source));
 }
 
 console.log(`projectCheck.test.js: ${passed} 項通過 ✅`);

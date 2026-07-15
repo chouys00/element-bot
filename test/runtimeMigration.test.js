@@ -19,6 +19,7 @@ const envExample = fs.readFileSync(path.join(repo, ".env.example"), "utf8");
 const migrationDoc = fs.readFileSync(path.join(repo, "docs", "codex-runtime-migration.md"), "utf8");
 assert.match(envExample, /TASK_RESULT_MODE=generic/);
 assert.match(migrationDoc, /TASK_RESULT_MODE=legacy/);
+assert.match(migrationDoc, /execute[\s\S]*danger-full-access[\s\S]*開啟網路/);
 
 const files = [
   ...filesUnder(path.join(repo, "src")),

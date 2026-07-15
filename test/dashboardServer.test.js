@@ -55,6 +55,22 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("dashboard 保留 Codex 輸出欄", htmlText.includes("執行輸出 (Codex)"));
   ok("dashboard 辨識 generic output", htmlText.includes("typeof sum.output === \"string\""));
   ok("generic 不重複顯示結果文字", htmlText.includes("const isGeneric") && htmlText.includes("isGeneric ? \"\""));
+  const fullHtmlSource = (htmlText.match(/const fullHtml = `([\s\S]*?)`;/) || [])[1] || "";
+  const genericAiSlot = "${isGeneric ? aiHtml : \"\"}";
+  const legacyAiSlot = "${isGeneric ? \"\" : aiHtml}";
+  ok("generic Codex output 在步驟前且只出現一次",
+    fullHtmlSource.indexOf(genericAiSlot) >= 0 &&
+    fullHtmlSource.indexOf(genericAiSlot) < fullHtmlSource.indexOf("${stepsHtml}") &&
+    (fullHtmlSource.match(/aiHtml/g) || []).length === 2 &&
+    fullHtmlSource.includes(legacyAiSlot));
+
+  const rulesHtmlText = await (await fetch(`${base}/rules.html`)).text();
+  ok("專案健檢 UI 只顯示路徑存在與是目錄",
+    rulesHtmlText.includes("路徑存在") && rulesHtmlText.includes("是目錄") &&
+    !/git 倉庫|未提交|乾淨/.test(rulesHtmlText));
+  const serverSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard", "server.js"), "utf8");
+  ok("probe 只在路徑不存在或非目錄時 blocked",
+    serverSource.includes("if (!chk.exists || !chk.directory)") && !serverSource.includes("!chk.is_git"));
 
   const traversal = await fetch(`${base}/api/tasks/..%2F..%2Fsecret/log`);
   ok("log 端點擋路徑穿越(400)", traversal.status === 400);
