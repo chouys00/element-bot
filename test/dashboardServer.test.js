@@ -52,6 +52,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const htmlText = await html.text();
   ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
   ok("dashboard 保留 Codex 輸出欄", htmlText.includes("執行輸出 (Codex)"));
+  ok("任務詳情顯示完整任務 ID",
+    htmlText.includes('<span class="k">任務 ID</span>') &&
+    htmlText.includes("${esc(t.id)}"));
   ok("dashboard 不提供開啟專案按鈕或請求",
     !htmlText.includes("開啟專案") &&
     !htmlText.includes('data-act="open"') &&

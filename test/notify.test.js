@@ -23,6 +23,7 @@ function freshQueue() {
   const task = { rule: "週報", task: "report-skill", source: { room_id: "!r:s", sender: "@a:s", body: "發週報" } };
   const p = writeNotifyFile({ queueDir: q, id, status: "done", task });
   ok("成功摘要取自 log", p.summary === "產出 result.json,verify errors=0");
+  ok("payload 保存任務 ID", p.id === id);
   ok("payload 帶 rule", p.rule === "週報");
   ok("payload 帶 source", p.source.room_id === "!r:s");
   ok("notify 檔已落地", fs.existsSync(path.join(q, "notify", id + ".json")));
@@ -76,7 +77,7 @@ function freshQueue() {
 // formatNotify:範本 B — 成功,房間名翻譯 + 發送者 + 摘要第二行
 {
   const text = formatNotify(
-    { status: "done", rule: "週報", task: "report-skill", source: { room_id: "!r:s", sender: "@alice:s" }, summary: "已產出報表" },
+    { id: "task-123", status: "done", rule: "週報", task: "report-skill", source: { room_id: "!r:s", sender: "@alice:s" }, summary: "已產出報表" },
     { rooms: { "!r:s": "產品群" } }
   );
   const lines = text.split("\n");
@@ -84,6 +85,7 @@ function freshQueue() {
   ok("房間名獨立成行,帶「聊天室」標籤", lines.some((l) => l === "聊天室:產品群"));
   ok("無顯示名時發送者縮短為 localpart,帶「觸發人」標籤", lines.some((l) => l === "觸發人:@alice") && !text.includes("@alice:s"));
   ok("摘要獨立成行(📝)", lines.some((l) => l === "📝 已產出報表"));
+  ok("通知顯示任務 ID", lines.some((l) => l === "任務 ID:task-123"));
 }
 
 // formatNotify:提供 senderName → 用顯示名而非帳號
