@@ -64,6 +64,9 @@ async function agentExecutor(task, ctx) {
       throw err; // worker 會移到 failed/;state.json 留著供重跑續跑
     }
   }
+  if (!summary) {
+    summary = await handlers.summarize({ workDir, task, emit, logger, shared });
+  }
   if (summary) emit(summary);
   return summary;
 }

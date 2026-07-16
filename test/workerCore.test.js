@@ -30,11 +30,29 @@ function writePending(queueDir, name, obj) {
     const q = freshQueue();
     const f = writePending(q, "a.json", { rule: "r", task: "t", params: {} });
     const ran = [];
-    const res = await processOne(f, { queueDir: q, executor: async (t) => ran.push(t), logger: silentLogger });
+    const res = await processOne(f, {
+      queueDir: q,
+      executor: async (task) => { ran.push(task); return { queueStatus: "done" }; },
+      logger: silentLogger,
+    });
     ok("成功回傳 done", res === "done");
     ok("executor 有被呼叫", ran.length === 1);
     ok("原檔已移走", !fs.existsSync(f));
     ok("檔案在 done/", fs.existsSync(path.join(q, "done", "a.json")));
+    fs.rmSync(q, { recursive: true, force: true });
+  }
+
+  {
+    const q = freshQueue();
+    const f = writePending(q, "empty-result.json", { rule: "r", task: "t", params: {} });
+    const res = await processOne(f, {
+      queueDir: q,
+      executor: async () => null,
+      logger: silentLogger,
+    });
+    ok("executor 空結果回傳 failed", res === "failed");
+    ok("executor 空結果移到 failed/", fs.existsSync(path.join(q, "failed", "empty-result.json")));
+    ok("executor 空結果留下錯誤紀錄", fs.existsSync(path.join(q, "failed", "empty-result.json.error.txt")));
     fs.rmSync(q, { recursive: true, force: true });
   }
 
@@ -79,7 +97,7 @@ function writePending(queueDir, name, obj) {
     const q = freshQueue();
     writePending(q, "1.json", { rule: "r", task: "t", params: {} });
     writePending(q, "2.json", { rule: "r", task: "t", params: {} });
-    const n = await pollOnce({ queueDir: q, executor: async () => {}, logger: silentLogger });
+    const n = await pollOnce({ queueDir: q, executor: async () => ({ queueStatus: "done" }), logger: silentLogger });
     ok("pollOnce 回傳處理筆數", n === 2);
     ok("pending 已清空", fs.readdirSync(path.join(q, "pending")).filter((f) => f.endsWith(".json")).length === 0);
     fs.rmSync(q, { recursive: true, force: true });
@@ -91,7 +109,10 @@ function writePending(queueDir, name, obj) {
     let sawProcessing = false;
     await processOne(f, {
       queueDir: q,
-      executor: async () => { sawProcessing = fs.existsSync(path.join(q, "processing", "p.json")); },
+      executor: async () => {
+        sawProcessing = fs.existsSync(path.join(q, "processing", "p.json"));
+        return { queueStatus: "done" };
+      },
       logger: silentLogger,
     });
     ok("執行期間檔案在 processing/", sawProcessing);
@@ -148,7 +169,12 @@ function writePending(queueDir, name, obj) {
     const q = freshQueue();
     const f = writePending(q, "n1.json", { rule: "r", task: "t", params: {} });
     const notes = [];
-    await processOne(f, { queueDir: q, executor: async () => {}, logger: silentLogger, notify: async (info) => notes.push(info) });
+    await processOne(f, {
+      queueDir: q,
+      executor: async () => ({ queueStatus: "done" }),
+      logger: silentLogger,
+      notify: async (info) => notes.push(info),
+    });
     ok("成功有通知", notes.length === 1 && notes[0].status === "done");
     ok("通知帶 id", notes[0].id === "n1");
     ok("通知帶 task 物件", notes[0].task && notes[0].task.task === "t");
@@ -167,7 +193,12 @@ function writePending(queueDir, name, obj) {
   {
     const q = freshQueue();
     const f = writePending(q, "n3.json", { rule: "r", task: "t", params: {} });
-    const res = await processOne(f, { queueDir: q, executor: async () => {}, logger: silentLogger, notify: async () => { throw new Error("notify fail"); } });
+    const res = await processOne(f, {
+      queueDir: q,
+      executor: async () => ({ queueStatus: "done" }),
+      logger: silentLogger,
+      notify: async () => { throw new Error("notify fail"); },
+    });
     ok("通知失敗不影響任務結果", res === "done");
     ok("任務仍在 done/", fs.existsSync(path.join(q, "done", "n3.json")));
     fs.rmSync(q, { recursive: true, force: true });
@@ -178,7 +209,11 @@ function writePending(queueDir, name, obj) {
     const q = freshQueue();
     const f = writePending(q, "withid.json", { rule: "r", task: "t" });
     let seen = null;
-    await processOne(f, { queueDir: q, executor: async (t, ctx) => { seen = ctx; }, logger: silentLogger });
+    await processOne(f, {
+      queueDir: q,
+      executor: async (_task, ctx) => { seen = ctx; return { queueStatus: "done" }; },
+      logger: silentLogger,
+    });
     ok("executor 收到 id", seen && seen.id === "withid");
     ok("executor 收到 queueDir", seen && seen.queueDir === q);
     fs.rmSync(q, { recursive: true, force: true });

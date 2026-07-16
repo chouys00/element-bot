@@ -63,5 +63,31 @@ const findSummary = (lines) => lines.find((entry) => typeof entry.status === "st
     fs.rmSync(queueDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 
+  {
+    const queueDir = freshQueue();
+    const workDir = path.join(queueDir, "work", "f3");
+    fs.mkdirSync(workDir, { recursive: true });
+    fs.writeFileSync(path.join(workDir, "state.json"), JSON.stringify({
+      id: "f3",
+      steps: { prepare: "ok", ai_run: "ok", verify: "ok", summarize: "ok" },
+      attempt: 1,
+    }), "utf8");
+    fs.writeFileSync(path.join(workDir, "task-result.json"), JSON.stringify({
+      status: "blocked",
+      output: "缺少必要的新圖片。",
+    }), "utf8");
+
+    const summary = await agentExecutor(TASK, {
+      queueDir,
+      id: "f3",
+      logger: silentLogger,
+      ops: { runCodex: () => { throw new Error("所有步驟完成時不應重跑 Codex"); } },
+    });
+
+    ok("全部步驟已完成時還原 blocked 狀態", summary && summary.queueStatus === "blocked");
+    ok("還原結果保留原始 output", summary && summary.output === "缺少必要的新圖片。");
+    fs.rmSync(queueDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+  }
+
   console.log(`executorIntegration.test.js: ${passed} 項通過 ✅`);
 })().catch((error) => { console.error(error); process.exit(1); });

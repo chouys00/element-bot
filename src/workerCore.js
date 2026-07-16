@@ -45,7 +45,10 @@ async function processOne(filePath, deps) {
   const id = base.replace(/\.json$/, "");
   try {
     const result = await executor(task, { logger, queueDir, id });
-    const status = result && result.queueStatus ? result.queueStatus : "done";
+    const status = result && result.queueStatus;
+    if (!status) {
+      throw new Error("executor 未回傳任務結果狀態");
+    }
     if (!["done", "failed", "blocked", "review"].includes(status)) {
       throw new Error(`未知的任務結果狀態:${status}`);
     }
