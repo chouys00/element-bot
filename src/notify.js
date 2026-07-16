@@ -3,6 +3,7 @@ const path = require("path");
 const { writeJsonAtomic } = require("./fsUtils");
 const { readLogLines } = require("./executors/agentExecutor");
 const { extractHttpLinks } = require("./links");
+const { formatTaskNumber } = require("./taskNumber");
 
 // 截斷過長字串(失敗原因可能是一整段 stack,只留重點避免通知太長)。
 function truncate(s, n) {
@@ -28,6 +29,7 @@ function writeNotifyFile(info) {
   const summary = error ? truncate(error, 200) : readSummaryFromLog(queueDir, id);
   const payload = {
     id,
+    task_number: formatTaskNumber(id),
     status,
     rule: (task && task.rule) || "",
     task: (task && task.task) || "",
@@ -68,7 +70,8 @@ function formatNotify(payload, opts = {}) {
   // 有顯示名用顯示名(如 Patrick.He.t),否則退回帳號 localpart(如 @patrick.zyx)。
   const who = senderName || shortSender(src.sender);
   const lines = [`${icon}「${label}」${verb}`, `聊天室:${roomName}`];
-  if (payload.id) lines.push(`任務 ID:${payload.id}`);
+  const taskNumber = payload.task_number || formatTaskNumber(payload.id);
+  if (taskNumber) lines.push(`任務編號:${taskNumber}`);
   if (src.sender) lines.push(`觸發人:${who}`);
   for (const url of Array.isArray(payload.links) ? payload.links : []) lines.push(`🔗 ${url}`);
   if (payload.summary) lines.push(`📝 ${payload.summary}`);

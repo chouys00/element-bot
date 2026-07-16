@@ -43,6 +43,22 @@ ok("無名稱回退 id", tasks.find((t) => t.id === "t2").room_name === "!x:s");
 ok("壞檔標記 parseError", tasks.some((t) => t.parseError === true));
 ok("limit 生效", collectTasks(queueDir, rooms, 1).length === 1);
 
+{
+  const numberedRoot = freshRoot();
+  const numberedQueue = path.join(numberedRoot, "queue");
+  const internalId = "2026-07-16T03-49-46-175Z-____-q3fnoi";
+  writeTask(numberedQueue, "done", `${internalId}.json`, {
+    rule: "測試",
+    task: "skill-dispatch",
+    enqueued_at: "2026-07-16T03:49:46.175Z",
+    source: {},
+  });
+  const numberedTask = collectTasks(numberedQueue, {}, 1)[0];
+  ok("任務清單帶出簡短任務編號", numberedTask.task_number === "20260716-114946-q3fnoi");
+  ok("任務清單保留內部完整 ID", numberedTask.id === internalId);
+  fs.rmSync(numberedRoot, { recursive: true, force: true });
+}
+
 const counts = statusCounts(queueDir);
 ok("狀態統計正確", counts.done === 1 && counts.pending === 1 && counts.failed === 1 && counts.processing === 1);
 

@@ -283,7 +283,7 @@ async function renderDetail() {
 
   const fullHtml = `
     <div><span class="k">狀態</span> ${badge(displayStatus(t))}</div>
-    <div><span class="k">任務 ID</span> <code>${esc(t.id)}</code></div>
+    <div><span class="k">任務編號</span> <code>${esc(t.task_number || t.id)}</code></div>
     <div><span class="k">入列時間</span> ${timeFull(t.enqueued_at)}</div>
     <div><span class="k">聊天室</span> ${esc(t.room_name)}</div>
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>

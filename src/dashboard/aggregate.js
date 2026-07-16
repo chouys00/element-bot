@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const { translateRoom } = require("../roomsSidecar");
 const { extractHttpLinks } = require("../links");
+const { formatTaskNumber } = require("../taskNumber");
 
 // judging/judged 為 LLM 判斷紀錄(見 judgeStatus.js):judging=判斷中,judged=判定不觸發/判斷失敗。
 // 一併列進任務清單,使用者才分得清「沒收到 vs 判斷中 vs LLM 拒絕 vs 判斷失敗」。
@@ -27,12 +28,13 @@ function collectTasks(queueDir, roomsMap, limit) {
       try {
         task = JSON.parse(fs.readFileSync(path.join(queueDir, status, f), "utf8"));
       } catch (_) {
-        out.push({ id, status, parseError: true });
+        out.push({ id, task_number: formatTaskNumber(id), status, parseError: true });
         continue;
       }
       const src = task.source || {};
       out.push({
         id,
+        task_number: formatTaskNumber(id),
         status,
         rule: task.rule,
         task: task.task,
