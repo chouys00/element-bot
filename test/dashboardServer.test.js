@@ -59,7 +59,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     !htmlText.includes("開啟專案") &&
     !htmlText.includes('data-act="open"') &&
     !htmlText.includes("/open"));
-  ok("dashboard 提供相關連結區塊", htmlText.includes("相關連結"));
+  ok("dashboard 提供驗收連結區塊", htmlText.includes("驗收連結") && !htmlText.includes("相關連結"));
   ok("dashboard 不保留 legacy 顯示分支",
     !htmlText.includes("legacySumHtml") &&
     !htmlText.includes("const isGeneric") &&

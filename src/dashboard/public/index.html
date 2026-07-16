@@ -253,7 +253,7 @@ async function renderDetail() {
     ? `<div class="k" style="margin-top:8px">執行輸出 (Codex)</div><pre>${esc(codexOutput)}</pre>`
     : "";
   const linksHtml = Array.isArray(prog.links) && prog.links.length
-    ? `<div class="k" style="margin-top:8px">相關連結</div>` + prog.links.map((url) =>
+    ? `<div class="k" style="margin-top:8px">驗收連結</div>` + prog.links.map((url) =>
         `<div><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a></div>`
       ).join("")
     : "";

@@ -2,7 +2,7 @@
 const path = require("path");
 const { writeJsonAtomic } = require("./fsUtils");
 const { readLogLines } = require("./executors/agentExecutor");
-const { extractHttpLinks } = require("./links");
+const { extractAcceptanceLinks } = require("./links");
 const { formatTaskNumber } = require("./taskNumber");
 
 // 截斷過長字串(失敗原因可能是一整段 stack,只留重點避免通知太長)。
@@ -35,7 +35,7 @@ function writeNotifyFile(info) {
     task: (task && task.task) || "",
     source: (task && task.source) || {},
     summary,
-    links: extractHttpLinks(summary),
+    links: extractAcceptanceLinks(summary),
     ts: new Date().toISOString(),
   };
   return writeJsonAtomic(path.join(notifyDir, id + ".json"), payload); // 原子落地:bot 的 fs.watch 讀到時一定是完整檔

@@ -69,10 +69,10 @@ fs.writeFileSync(path.join(queueDir, "logs", "t1.log"), "ran ok", "utf8");
 ok("有 log 優先", resolveTaskLog(queueDir, "t1").source === "log" && resolveTaskLog(queueDir, "t1").text === "ran ok");
 
 fs.writeFileSync(path.join(queueDir, "logs", "with-link.log"), JSON.stringify({
-  ai_output: "互動驗收 https://preview.intra.local/tasks/task-1/",
+  ai_output: "舊網址 https://old.example.com/\n\n驗收連結：\n- https://preview.intra.local/tasks/task-1/",
 }) + "\n", "utf8");
 ok(
-  "progress 擷取 output 的相關連結",
+  "progress 只擷取 output 明確標示的驗收連結",
   JSON.stringify(parseProgress(queueDir, "with-link").links) === JSON.stringify(["https://preview.intra.local/tasks/task-1/"])
 );
 

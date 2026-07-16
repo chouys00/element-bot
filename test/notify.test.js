@@ -47,7 +47,7 @@ function freshQueue() {
   fs.mkdirSync(path.join(q, "logs"), { recursive: true });
   fs.writeFileSync(path.join(q, "logs", "preview.log"), JSON.stringify({
     status: "success",
-    output: "已完成。互動驗收：https://preview.intra.local/tasks/task-1/",
+    output: "已完成。舊網址：https://old.example.com/\n\n驗收連結：\n- https://preview.intra.local/tasks/task-1/",
   }) + "\n", "utf8");
   const payload = writeNotifyFile({ queueDir: q, id: "preview", status: "done", task: { rule: "前端修改", source: {} } });
   assert.deepStrictEqual(payload.links, ["https://preview.intra.local/tasks/task-1/"]);

@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { translateRoom } = require("../roomsSidecar");
-const { extractHttpLinks } = require("../links");
+const { extractAcceptanceLinks } = require("../links");
 const { formatTaskNumber } = require("../taskNumber");
 
 // judging/judged 為 LLM 判斷紀錄(見 judgeStatus.js):judging=判斷中,judged=判定不觸發/判斷失敗。
@@ -136,7 +136,7 @@ function parseProgress(queueDir, id) {
     }
   }
   const output = aiOutput || (summary && summary.output) || "";
-  return { steps: order.map((k) => byKey[k]), summary, aiOutput, links: extractHttpLinks(output) };
+  return { steps: order.map((k) => byKey[k]), summary, aiOutput, links: extractAcceptanceLinks(output) };
 }
 
 // 任務是否已被人工驗收(work/<id>/verified.json 存在)。
