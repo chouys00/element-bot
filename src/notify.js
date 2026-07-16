@@ -2,6 +2,7 @@
 const path = require("path");
 const { writeJsonAtomic } = require("./fsUtils");
 const { readLogLines } = require("./executors/agentExecutor");
+const { extractHttpLinks } = require("./links");
 
 // 截斷過長字串(失敗原因可能是一整段 stack,只留重點避免通知太長)。
 function truncate(s, n) {
@@ -31,6 +32,7 @@ function writeNotifyFile(info) {
     task: (task && task.task) || "",
     source: (task && task.source) || {},
     summary,
+    links: extractHttpLinks(summary),
     ts: new Date().toISOString(),
   };
   return writeJsonAtomic(path.join(notifyDir, id + ".json"), payload); // 原子落地:bot 的 fs.watch 讀到時一定是完整檔
@@ -66,6 +68,7 @@ function formatNotify(payload, opts = {}) {
   const who = senderName || shortSender(src.sender);
   const lines = [`${icon}「${label}」${verb}`, `聊天室:${roomName}`];
   if (src.sender) lines.push(`觸發人:${who}`);
+  for (const url of Array.isArray(payload.links) ? payload.links : []) lines.push(`🔗 ${url}`);
   if (payload.summary) lines.push(`📝 ${payload.summary}`);
   return lines.join("\n");
 }

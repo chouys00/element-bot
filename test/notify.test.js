@@ -40,6 +40,21 @@ function freshQueue() {
   fs.rmSync(q, { recursive: true, force: true });
 }
 
+{
+  const q = freshQueue();
+  fs.mkdirSync(path.join(q, "logs"), { recursive: true });
+  fs.writeFileSync(path.join(q, "logs", "preview.log"), JSON.stringify({
+    status: "success",
+    output: "已完成。互動驗收：https://preview.intra.local/tasks/task-1/",
+  }) + "\n", "utf8");
+  const payload = writeNotifyFile({ queueDir: q, id: "preview", status: "done", task: { rule: "前端修改", source: {} } });
+  assert.deepStrictEqual(payload.links, ["https://preview.intra.local/tasks/task-1/"]);
+  passed++;
+  const text = formatNotify(payload);
+  ok("通知把驗收連結放在摘要之前", text.indexOf("🔗 https://preview.intra.local/tasks/task-1/") < text.indexOf("📝"));
+  fs.rmSync(q, { recursive: true, force: true });
+}
+
 // writeNotifyFile:失敗任務用 error(截斷)
 {
   const q = freshQueue();

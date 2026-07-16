@@ -63,6 +63,19 @@
 
 dashboard(`npm run dashboard`)提供任務監控、規則編輯與試跑介面。
 
+## 驗收連結（v1.7+）
+
+任務專案若產生可供人員驗收的資源，可在 Codex 通用結果的 `output` 放入完整的 `http://` 或 `https://` URL。例如：
+
+```json
+{
+  "status": "success",
+  "output": "已完成前端修改。\n互動驗收：https://preview.intra.local/tasks/task-123/"
+}
+```
+
+element-bot 會保留完整 output，並在 Dashboard 的任務詳情顯示「相關連結」、在 Matrix 任務通知的摘要前列出 URL。它只轉交連結：不會啟動、檢查、停止或託管任務專案的 preview、截圖、錄影或 build 產物。多任務 preview 的 snapshot、TTL 與回收管理屬後續 Preview Manager 範圍。
+
 ## 不在範圍內
 
 - 不含加密媒體的實際內容(只有檔名)。

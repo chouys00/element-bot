@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { translateRoom } = require("../roomsSidecar");
+const { extractHttpLinks } = require("../links");
 
 // judging/judged 為 LLM 判斷紀錄(見 judgeStatus.js):judging=判斷中,judged=判定不觸發/判斷失敗。
 // 一併列進任務清單,使用者才分得清「沒收到 vs 判斷中 vs LLM 拒絕 vs 判斷失敗」。
@@ -106,7 +107,7 @@ function readMessagesTail(outputFile, n) {
 function parseProgress(queueDir, id) {
   let raw;
   try { raw = fs.readFileSync(path.join(queueDir, "logs", id + ".log"), "utf8"); }
-  catch (_) { return { steps: [], summary: null, aiOutput: null }; }
+  catch (_) { return { steps: [], summary: null, aiOutput: null, links: [] }; }
 
   const order = [];
   const byKey = {};
@@ -132,7 +133,8 @@ function parseProgress(queueDir, id) {
       summary = o;
     }
   }
-  return { steps: order.map((k) => byKey[k]), summary, aiOutput };
+  const output = aiOutput || (summary && summary.output) || "";
+  return { steps: order.map((k) => byKey[k]), summary, aiOutput, links: extractHttpLinks(output) };
 }
 
 // 任務是否已被人工驗收(work/<id>/verified.json 存在)。

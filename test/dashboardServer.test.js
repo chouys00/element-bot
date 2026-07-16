@@ -52,6 +52,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const htmlText = await html.text();
   ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
   ok("dashboard 保留 Codex 輸出欄", htmlText.includes("執行輸出 (Codex)"));
+  ok("dashboard 提供相關連結區塊", htmlText.includes("相關連結"));
   ok("dashboard 不保留 legacy 顯示分支",
     !htmlText.includes("legacySumHtml") &&
     !htmlText.includes("const isGeneric") &&
