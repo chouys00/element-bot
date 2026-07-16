@@ -247,32 +247,8 @@ async function renderDetail() {
     : "";
 
   const sum = prog.summary;
-  const changesHtml = sum && Array.isArray(sum.changes) && sum.changes.length
-    ? `<div class="k" style="margin-top:8px">修改／產出</div>` + sum.changes.map((item) => `<div>• ${esc(item)}</div>`).join("")
-    : "";
-  const validationHtml = sum && Array.isArray(sum.validation) && sum.validation.length
-    ? `<div class="k" style="margin-top:8px">驗證</div>` + sum.validation.map((item) => {
-        const icon = item.status === "passed" ? "✓" : item.status === "failed" ? "✗" : "○";
-        return `<div>${icon} ${esc(item.command)} — ${esc(item.status)}${item.detail ? `：${esc(item.detail)}` : ""}</div>`;
-      }).join("")
-    : "";
-  const commitsHtml = sum && Array.isArray(sum.commits) && sum.commits.length
-    ? `<div class="k" style="margin-top:8px">提交</div>` + sum.commits.map((item) => `<div><code>${esc(item.hash)}</code> ${esc(item.message)}</div>`).join("")
-    : "";
-  const warningsHtml = sum && Array.isArray(sum.warnings) && sum.warnings.length
-    ? sum.warnings.map((item) => `<div style="color:#f0b072">⚠ ${esc(item)}</div>`).join("")
-    : "";
-  const isGeneric = !!(sum && typeof sum.output === "string");
-  const legacySumHtml = sum
-    ? `<div class="k" style="margin-top:8px">結果</div><div>${esc(sum.status)} — ${esc(sum.summary || sum.message || "")}</div>` +
-      ((Array.isArray(sum.needsReview) && sum.needsReview.length)
-        ? sum.needsReview.map((n) => `<div style="color:#f0b072">⚠ ${esc(n)}</div>`).join("") : "") +
-      changesHtml + validationHtml + commitsHtml + warningsHtml
-    : "";
-  const sumHtml = isGeneric ? "" : legacySumHtml;
-
-  // Codex 在專案內的實際輸出(ai_run 步驟),讓「結果」不只有一行彙總。
-  const codexOutput = prog.aiOutput || (isGeneric ? sum.output : "");
+  // ai_run 會記錄完整輸出；summary.output 供舊 checkpoint 續跑時補足顯示。
+  const codexOutput = prog.aiOutput || (sum && sum.output) || "";
   const aiHtml = codexOutput
     ? `<div class="k" style="margin-top:8px">執行輸出 (Codex)</div><pre>${esc(codexOutput)}</pre>`
     : "";
@@ -310,10 +286,9 @@ async function renderDetail() {
     ${dispatchHtml}
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
     ${judgeHtml}
-    ${isGeneric ? aiHtml : ""}
+    ${aiHtml}
     ${stepsHtml}
-    ${sumHtml}
-    ${isGeneric ? "" : aiHtml}${actHtml}`;
+    ${actHtml}`;
 
   // 內容與目前顯示的完全相同(同一任務、HTML 沒變)→ 不動 DOM,保住 scrollTop,畫面不跳頂。
   const sameTask = lastDetailKey === selectedId;

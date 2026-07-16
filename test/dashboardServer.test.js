@@ -51,18 +51,16 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("根路徑回 200", html.status === 200);
   const htmlText = await html.text();
   ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
-  ok("dashboard 顯示結構化驗證與提交證據", htmlText.includes("修改／產出") && htmlText.includes("驗證") && htmlText.includes("提交"));
   ok("dashboard 保留 Codex 輸出欄", htmlText.includes("執行輸出 (Codex)"));
-  ok("dashboard 辨識 generic output", htmlText.includes("typeof sum.output === \"string\""));
-  ok("generic 不重複顯示結果文字", htmlText.includes("const isGeneric") && htmlText.includes("isGeneric ? \"\""));
+  ok("dashboard 不保留 legacy 顯示分支",
+    !htmlText.includes("legacySumHtml") &&
+    !htmlText.includes("const isGeneric") &&
+    !htmlText.includes("修改／產出"));
   const fullHtmlSource = (htmlText.match(/const fullHtml = `([\s\S]*?)`;/) || [])[1] || "";
-  const genericAiSlot = "${isGeneric ? aiHtml : \"\"}";
-  const legacyAiSlot = "${isGeneric ? \"\" : aiHtml}";
-  ok("generic Codex output 在步驟前且只出現一次",
-    fullHtmlSource.indexOf(genericAiSlot) >= 0 &&
-    fullHtmlSource.indexOf(genericAiSlot) < fullHtmlSource.indexOf("${stepsHtml}") &&
-    (fullHtmlSource.match(/aiHtml/g) || []).length === 2 &&
-    fullHtmlSource.includes(legacyAiSlot));
+  ok("Codex output 在步驟前且只出現一次",
+    fullHtmlSource.indexOf("${aiHtml}") >= 0 &&
+    fullHtmlSource.indexOf("${aiHtml}") < fullHtmlSource.indexOf("${stepsHtml}") &&
+    (fullHtmlSource.match(/aiHtml/g) || []).length === 1);
 
   const rulesHtmlText = await (await fetch(`${base}/rules.html`)).text();
   ok("專案健檢 UI 只顯示路徑存在與是目錄",

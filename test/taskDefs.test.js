@@ -32,7 +32,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   }
   ok("skill-dispatch prompt 帶入指令", def.prompt({ command: "/i18n pages/activity" }).includes("/i18n pages/activity"));
   const prompt = def.prompt({ command: "https://zentao.example/bug-view-1.html" });
-  ok("prompt 將 command 視為專案內直接輸入", prompt.includes("直接在此專案"));
+  ok("prompt 將 command 視為已核准要求", prompt.includes("已核准交由本次流程直接執行"));
   ok("prompt 要求依專案 instructions 與 skills 執行", prompt.includes("instructions") && prompt.includes("skills"));
   ok("prompt 要求結構化回報", prompt.includes("指定 schema"));
   for (const forbidden of [".claude/skills", ".agents/skills", ".cursor/skills"]) {
@@ -41,12 +41,10 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   for (const forbidden of ["不得讀寫工作目錄之外", "預設不 commit", "絕不自作主張"]) {
     ok(`prompt 不含派發器政策: ${forbidden}`, !prompt.includes(forbidden));
   }
-  ok("skill-dispatch 不跑 verify(verifyArgs null)", def.verifyArgs == null);
+  assert.deepStrictEqual(Object.keys(def).sort(), ["prompt", "sourceDir"], "task definition 不保留 legacy 欄位");
+  passed++;
 
-  const genericPrompt = def.prompt(
-    { command: "處理這項要求" },
-    { resultMode: "generic" }
-  );
+  const genericPrompt = def.prompt({ command: "處理這項要求" });
   ok("generic 任務已核准", genericPrompt.includes("已核准") && genericPrompt.includes("無人值守"));
   ok("不得自行等待確認", genericPrompt.includes("不得自行增加") && genericPrompt.includes("再次確認"));
   ok("已完成回報成功且不重做", genericPrompt.includes("已經完成") && genericPrompt.includes("success") && genericPrompt.includes("不重複"));

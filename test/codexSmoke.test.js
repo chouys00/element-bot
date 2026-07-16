@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { runCodex } = require("../src/codexRunner");
-const { parseTaskResult, schemaForMode } = require("../src/executors/taskResult");
+const { parseTaskResult, TASK_RESULT_SCHEMA } = require("../src/executors/taskResult");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "element-bot-codex-smoke-"));
 function git(args) {
@@ -36,9 +36,9 @@ function git(args) {
       mode: "execute",
       cwd: tempDir,
       timeoutMs: 600000,
-      outputSchema: schemaForMode("generic"),
+      outputSchema: TASK_RESULT_SCHEMA,
     });
-    const result = parseTaskResult(output, "generic");
+    const result = parseTaskResult(output);
     assert.strictEqual(result.status, "success");
     assert.match(result.output, /marker|無需|完成/i);
     assert.strictEqual(fs.readFileSync(markerPath, "utf8"), markerContent);

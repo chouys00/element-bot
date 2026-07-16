@@ -13,19 +13,30 @@ function freshQueue() {
   return d;
 }
 
-// writeNotifyFile:成功任務從 log 撈 summary,寫 notify/<id>.json
+// writeNotifyFile:成功任務從 log 撈 generic output,寫 notify/<id>.json
 {
   const q = freshQueue();
   const id = "t1";
   fs.mkdirSync(path.join(q, "logs"), { recursive: true });
   fs.writeFileSync(path.join(q, "logs", id + ".log"),
-    `{"step":"summarize","status":"ok"}\n{"status":"OK","summary":"產出 result.json,verify errors=0"}\n`, "utf8");
+    `{"step":"summarize","status":"ok"}\n{"status":"success","output":"產出 result.json,verify errors=0"}\n`, "utf8");
   const task = { rule: "週報", task: "report-skill", source: { room_id: "!r:s", sender: "@a:s", body: "發週報" } };
   const p = writeNotifyFile({ queueDir: q, id, status: "done", task });
   ok("成功摘要取自 log", p.summary === "產出 result.json,verify errors=0");
   ok("payload 帶 rule", p.rule === "週報");
   ok("payload 帶 source", p.source.room_id === "!r:s");
   ok("notify 檔已落地", fs.existsSync(path.join(q, "notify", id + ".json")));
+  fs.rmSync(q, { recursive: true, force: true });
+}
+
+// 舊 summary 不再是現行通知契約。
+{
+  const q = freshQueue();
+  fs.mkdirSync(path.join(q, "logs"), { recursive: true });
+  fs.writeFileSync(path.join(q, "logs", "legacy.log"),
+    '{"status":"OK","summary":"舊格式摘要"}\n', "utf8");
+  const payload = writeNotifyFile({ queueDir: q, id: "legacy", status: "done", task: { rule: "舊任務", source: {} } });
+  ok("通知忽略 legacy summary", payload.summary === "");
   fs.rmSync(q, { recursive: true, force: true });
 }
 
@@ -89,9 +100,9 @@ function freshQueue() {
 {
   const q = freshQueue();
   fs.mkdirSync(path.join(q, "logs"), { recursive: true });
-  fs.writeFileSync(path.join(q, "logs", "blocked.log"), '{"status":"blocked","summary":"缺少登入"}\n', "utf8");
+  fs.writeFileSync(path.join(q, "logs", "blocked.log"), '{"status":"blocked","output":"缺少登入"}\n', "utf8");
   const payload = writeNotifyFile({ queueDir: q, id: "blocked", status: "blocked", task: { rule: "禪道", source: {} } });
-  ok("非成功結構化狀態也從 log 取得摘要", payload.summary === "缺少登入");
+  ok("非成功狀態也從 output 取得摘要", payload.summary === "缺少登入");
   fs.rmSync(q, { recursive: true, force: true });
 }
 

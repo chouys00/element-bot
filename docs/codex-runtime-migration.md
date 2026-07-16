@@ -14,13 +14,13 @@ Element-bot 只支援 Codex。所有 CLI 細節集中於 `src/codexRunner.js`：
 
 Judge 另透過暫存 JSON 檔使用 `--output-schema`，執行結束後立即清除。
 
-## 任務結果模式與立即還原
+## 任務結果契約與還原
 
-`TASK_RESULT_MODE` 預設為 `generic`。generic 契約不假設 Git、commit、檔案修改或任何特定任務類型，只要求 `status` 與完整 `output`。dashboard 會把 `output` 直接顯示為「執行輸出 (Codex)」，中間不會再呼叫第二個 LLM 改寫或摘要。
+現行結果契約不假設 Git、commit、檔案修改或任何特定任務類型，只要求 `status` 與完整 `output`。dashboard 會把 `output` 直接顯示為「執行輸出 (Codex)」，中間不會再呼叫第二個 LLM 改寫或摘要。
 
 Codex 應先依目標環境規則判斷工作是否已經完成。若已有足夠證據，任務可在沒有新增修改、commit 或其他 side effect 的情況下直接回報 `success`，不應為了製造變更而重複執行。
 
-若 generic 契約需要立即回退，在 element-bot 的 `.env` 設定 `TASK_RESULT_MODE=legacy`，然後只重啟 worker，即可恢復舊 detailed 結果格式。此切換只影響 element-bot 的提示詞、schema、結果解析與顯示，不會修改任何目標專案檔案、instructions 或 skills。
+若需要恢復舊版詳細結果格式，從 Git 歷史還原結果 schema、executor、Dashboard 與相關測試；現行 runtime 不保留雙軌切換。還原 element-bot 不會修改任何目標專案檔案、instructions 或 skills。
 
 ### Windows sandbox helper 路徑
 

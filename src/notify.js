@@ -9,13 +9,12 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n).trimEnd() + " …" : s;
 }
 
-// 從任務 log 由後往前取 generic output，舊格式則退回 summary；全程不新增 AI 呼叫。
+// 從任務 log 由後往前取 Codex 完整 output；全程不新增 AI 呼叫。
 function readSummaryFromLog(queueDir, id) {
   const lines = readLogLines(queueDir, id);
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
     if (line && typeof line.output === "string" && line.output) return line.output;
-    if (line && typeof line.summary === "string" && line.summary) return line.summary;
   }
   return "";
 }
