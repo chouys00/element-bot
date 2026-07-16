@@ -11,3 +11,4 @@ queue/
 # 由 dashboard 維護、不入版控。範本見 config/rules.example.json。
 config/rules.json
 .superpowers/
+.worktrees/
