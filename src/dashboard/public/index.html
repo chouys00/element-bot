@@ -252,6 +252,11 @@ async function renderDetail() {
   const aiHtml = codexOutput
     ? `<div class="k" style="margin-top:8px">執行輸出 (Codex)</div><pre>${esc(codexOutput)}</pre>`
     : "";
+  const linksHtml = Array.isArray(prog.links) && prog.links.length
+    ? `<div class="k" style="margin-top:8px">相關連結</div>` + prog.links.map((url) =>
+        `<div><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a></div>`
+      ).join("")
+    : "";
 
   // LLM 判斷紀錄(judging/judged):判斷中/不觸發/失敗與失敗原因。
   let judgeHtml = "";
@@ -287,6 +292,7 @@ async function renderDetail() {
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
     ${judgeHtml}
     ${aiHtml}
+    ${linksHtml}
     ${stepsHtml}
     ${actHtml}`;
 

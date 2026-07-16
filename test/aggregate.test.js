@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { collectTasks, statusCounts, readMessagesTail, resolveTaskLog, isVerified } = require("../src/dashboard/aggregate");
+const { collectTasks, statusCounts, readMessagesTail, resolveTaskLog, parseProgress, isVerified } = require("../src/dashboard/aggregate");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
@@ -51,6 +51,14 @@ fs.writeFileSync(path.join(queueDir, "failed", "bad.json.error.txt"), "boom", "u
 ok("有 error.txt 用之", resolveTaskLog(queueDir, "bad").source === "error" && resolveTaskLog(queueDir, "bad").text === "boom");
 fs.writeFileSync(path.join(queueDir, "logs", "t1.log"), "ran ok", "utf8");
 ok("有 log 優先", resolveTaskLog(queueDir, "t1").source === "log" && resolveTaskLog(queueDir, "t1").text === "ran ok");
+
+fs.writeFileSync(path.join(queueDir, "logs", "with-link.log"), JSON.stringify({
+  ai_output: "互動驗收 https://preview.intra.local/tasks/task-1/",
+}) + "\n", "utf8");
+ok(
+  "progress 擷取 output 的相關連結",
+  JSON.stringify(parseProgress(queueDir, "with-link").links) === JSON.stringify(["https://preview.intra.local/tasks/task-1/"])
+);
 
 const out = path.join(root, "output", "messages.jsonl");
 fs.appendFileSync(out, JSON.stringify({ body: "m1" }) + "\n" + JSON.stringify({ body: "m2" }) + "\n", "utf8");
