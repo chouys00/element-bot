@@ -38,7 +38,7 @@ function writeLog(q, id, lines) {
   writeLog(q, "j2", [
     { steps: [{ key: "summarize", label: "彙總結果" }] },
     { step: "summarize", status: "ok", ms: 5 },
-    { status: "OK", summary: "好了", needsReview: ["補設計"], openPath: "/x" },
+    { status: "OK", summary: "好了", needsReview: ["補設計"] },
   ]);
   const p = parseProgress(q, "j2");
   ok("取到總結", p.summary && p.summary.status === "OK");

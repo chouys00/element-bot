@@ -21,7 +21,7 @@ function fakeHandlers(calls) {
     prepare: async () => { calls.push("prepare"); },
     ai_run: async () => { calls.push("ai_run"); },
     verify: async () => { calls.push("verify"); },
-    summarize: async () => { calls.push("summarize"); return { status: "OK", summary: "done", needsReview: ["X"], openPath: "/p" }; },
+    summarize: async () => { calls.push("summarize"); return { status: "OK", summary: "done", needsReview: ["X"] }; },
   };
 }
 

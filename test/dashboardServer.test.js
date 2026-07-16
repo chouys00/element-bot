@@ -52,6 +52,10 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const htmlText = await html.text();
   ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
   ok("dashboard 保留 Codex 輸出欄", htmlText.includes("執行輸出 (Codex)"));
+  ok("dashboard 不提供開啟專案按鈕或請求",
+    !htmlText.includes("開啟專案") &&
+    !htmlText.includes('data-act="open"') &&
+    !htmlText.includes("/open"));
   ok("dashboard 提供相關連結區塊", htmlText.includes("相關連結"));
   ok("dashboard 不保留 legacy 顯示分支",
     !htmlText.includes("legacySumHtml") &&
@@ -99,11 +103,11 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const vno = await fetch(`${base}/api/tasks/ghost/verify`, { method: "POST" });
   ok("verify 無此任務 → 404", vno.status === 404);
 
-  // open 路徑逸出 work/ → 400(openPath 在 work/ 外,spawn 前就被擋下)
+  // 公共電腦不提供遠端開啟專案 API。
   fs.mkdirSync(path.join(queueDir, "logs"), { recursive: true });
   fs.writeFileSync(path.join(queueDir, "logs", "o1.log"), JSON.stringify({ status: "OK", summary: "x", openPath: "C:/evil/x" }) + "\n", "utf8");
   const op = await fetch(`${base}/api/tasks/o1/open`, { method: "POST" });
-  ok("open 路徑逸出 work/ → 400", op.status === 400);
+  ok("open API 已移除 → 404", op.status === 404);
 
   // POST 防穿越:id 帶 .. → 400
   const badPost = await fetch(`${base}/api/tasks/..%2Fx/requeue`, { method: "POST" });

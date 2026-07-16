@@ -33,9 +33,7 @@ function make(ops) {
       shared.verify = { ownedByTarget: true };
     },
 
-    async summarize({ workDir, task, shared }) {
-      const def = getTaskDef(task.task);
-      const src = def.sourceDir(task);
+    async summarize({ workDir, shared }) {
       const saved = shared.taskResult || (workDir ? readJsonSafe(path.join(workDir, RESULT_FILE), null) : null);
       if (!saved) throw new Error("找不到 Codex 結構化任務結果");
       const result = validateTaskResult(saved);
@@ -43,7 +41,6 @@ function make(ops) {
         ...result,
         queueStatus: queueStatus(result.status),
         produced: Array.isArray(result.changes) ? result.changes : [],
-        openPath: src,
       };
     },
   };

@@ -1,9 +1,13 @@
 "use strict";
 const assert = require("assert");
-const { getTaskDef, taskNames } = require("../src/taskDefs");
+const taskDefs = require("../src/taskDefs");
+const { getTaskDef, taskNames } = taskDefs;
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
+
+assert.deepStrictEqual(Object.keys(taskDefs).sort(), ["getTaskDef", "taskNames"], "taskDefs 不維護開啟專案白名單");
+passed++;
 
 {
   let threw = false;

@@ -39,7 +39,4 @@ function taskNames() {
   return Object.keys(DEFS);
 }
 
-// element-bot 不維護外部專案白名單；外部目標只由 projectCheck 與 executor 做安全檢查。
-const PROJECT_ROOTS = [];
-
-module.exports = { getTaskDef, PROJECT_ROOTS, taskNames };
+module.exports = { getTaskDef, taskNames };

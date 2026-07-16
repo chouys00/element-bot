@@ -5,7 +5,7 @@ const path = require("path");
 const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS } = require("./aggregate");
 const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
-const { PROJECT_ROOTS, taskNames } = require("../taskDefs");
+const { taskNames } = require("../taskDefs");
 const { loadRules, saveRules } = require("../rules");
 const { dryRunRules } = require("../trigger");
 const { projectCheck } = require("../projectCheck");
@@ -127,7 +127,7 @@ function createServer(deps) {
             return sendJson(res, 200, { error: String((e && e.message) || e), project_check: chk });
           }
         }
-        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|verify|open)$/);
+        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|verify)$/);
         if (m) {
           const id = decodeURIComponent(m[1]);
           if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
@@ -139,19 +139,6 @@ function createServer(deps) {
             ensureDir(path.join(queueDir, "pending"));
             try { fs.rmSync(path.join(queueDir, sourceStatus, id + ".json.error.txt"), { force: true }); } catch (_) {}
             fs.renameSync(from, to);
-            return sendJson(res, 200, { ok: true });
-          }
-          if (m[2] === "open") {
-            const prog = parseProgress(queueDir, id);
-            const openPath = prog.summary && prog.summary.openPath;
-            const resolved = openPath ? path.resolve(openPath) : "";
-            const inKnownRoot = resolved && PROJECT_ROOTS.some((root) => {
-              const r = path.resolve(root);
-              return resolved === r || resolved.startsWith(r + path.sep);
-            });
-            if (!inKnownRoot) { res.writeHead(400); return res.end("bad path"); }
-            const opener = process.platform === "win32" ? "explorer" : process.platform === "darwin" ? "open" : "xdg-open";
-            require("child_process").spawn(opener, [resolved], { detached: true, stdio: "ignore" }).unref();
             return sendJson(res, 200, { ok: true });
           }
           // verify:先確認任務存在,避免替不存在的 id 建立孤兒 work 目錄

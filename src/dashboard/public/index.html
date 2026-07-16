@@ -277,7 +277,6 @@ async function renderDetail() {
     : "";
 
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-    ${sum && sum.openPath ? `<button data-act="open" class="abtn">開啟專案</button>` : ""}
     ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收"}</button>` : ""}
     ${(t.status === "failed" || t.status === "blocked") ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
   </div>`;
@@ -308,14 +307,10 @@ async function renderDetail() {
   lastDetailKey = selectedId;
   lastDetailHtml = fullHtml;
 
-  box.querySelectorAll(".abtn").forEach((b) => b.addEventListener("click", () => doAction(b.dataset.act, sum)));
+  box.querySelectorAll(".abtn").forEach((b) => b.addEventListener("click", () => doAction(b.dataset.act)));
 }
 
-async function doAction(act, sum) {
-  if (act === "open") {
-    if (sum && sum.openPath) { await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/open`, { method: "POST" }).catch(() => {}); }
-    return;
-  }
+async function doAction(act) {
   await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/${act}`, { method: "POST" }).catch(() => {});
   refresh();
 }

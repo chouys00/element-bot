@@ -51,6 +51,7 @@ function freshWork() {
     ok("完整輸出交給 dashboard", emitted.some((entry) => entry.ai_output === expected.output));
     ok("沒有改動仍為 done", sum.status === "success" && sum.queueStatus === "done");
     ok("不捏造 produced", Array.isArray(sum.produced) && sum.produced.length === 0);
+    ok("summary 不提供開啟專案路徑", !Object.prototype.hasOwnProperty.call(sum, "openPath"));
     fs.rmSync(workDir, { recursive: true, force: true });
   }
 
