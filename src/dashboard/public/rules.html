@@ -88,6 +88,7 @@
     <div class="row"><label>關鍵字</label><input type="text" id="f_keywords" placeholder="逗號分隔,例如:改顏色, 背景" /></div>
     <div class="row"><label>任務 (task)</label><select id="f_task"></select></div>
     <div class="row dispatchonly"><label>專案路徑</label><input type="text" id="f_project_path" placeholder="專案絕對路徑,例如 D:\GB\GBH5" /></div>
+    <div class="row dispatchonly"><label>目標分支</label><input type="text" id="f_target_branch" placeholder="例如 main 或 feature/{分支}" /></div>
     <div class="row dispatchonly"><label>指令 (command)</label><div>
       <input type="text" id="f_command" placeholder="例如 /i18n {路徑} 或 啟動" />
       <div class="hint">餵給該專案 skill 的指令;用 {欄位} 代入抽取值(需搭配下方「使用 LLM」+「抽取欄位」),無 {} 則為固定指令。</div>
@@ -404,6 +405,7 @@ function openEdit(index) {
   document.getElementById("f_intent").value = r.intent || "";
   document.getElementById("f_extract").value = (r.extract || []).join(", ");
   document.getElementById("f_project_path").value = r.project_path || "";
+  document.getElementById("f_target_branch").value = r.target_branch || "";
   document.getElementById("f_command").value = r.command || "";
   fillSelects(r);
   toggleLlm();
@@ -424,6 +426,7 @@ async function applyEdit() {
   const intent = document.getElementById("f_intent").value.trim();
   const extract = splitCsv(document.getElementById("f_extract").value);
   const project_path = document.getElementById("f_project_path").value.trim();
+  const target_branch = document.getElementById("f_target_branch").value.trim();
   const command = document.getElementById("f_command").value.trim();
 
   const err = (m) => { document.getElementById("formErr").textContent = m; };
@@ -433,6 +436,7 @@ async function applyEdit() {
   if (use_llm && !intent) return err("使用 LLM 時,觸發意圖(intent)必填");
   if (task === "skill-dispatch") {
     if (!project_path) return err("skill-dispatch 需要填「專案路徑」");
+    if (!target_branch) return err("skill-dispatch 需要填「目標分支」");
     if (!command) return err("skill-dispatch 需要填「指令 (command)」");
   }
   if (enabled && !roomsSel.length) return err("啟用中的規則必須至少勾選一個房間;或取消勾選「啟用」");
@@ -443,6 +447,7 @@ async function applyEdit() {
   if (use_llm) { rule.intent = intent; if (extract.length) rule.extract = extract; }
   else if (extract.length) rule.extract = extract;
   if (project_path) rule.project_path = project_path; // skill-dispatch 用:專案絕對路徑
+  if (target_branch) rule.target_branch = target_branch; // skill-dispatch 用:驗收後發布分支
   if (command) rule.command = command;                // skill-dispatch 用:餵給 skill 的指令
 
   const next = [...rules];

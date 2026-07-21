@@ -66,6 +66,7 @@ async function runTriggerPipeline(rec, deps) {
         // 兩者為選填(內建任務不需要),故只在規則有設時才加進 task。
         ...(rule.project_path ? { project_path: rule.project_path } : {}),
         ...(rule.command ? { command: fillTemplate(rule.command, params) } : {}),
+        ...(rule.target_branch ? { target_branch: fillTemplate(rule.target_branch, params) } : {}),
         source: {
           room_id: rec.room_id,
           sender: rec.sender,
@@ -111,6 +112,7 @@ function dryRunRules(body, roomId, rules) {
       command,
       has_placeholder: !!command && /\{[^}]+\}/.test(command),
       project_path: rule.project_path || null,
+      target_branch: rule.target_branch || null,
       rooms: Array.isArray(rule.rooms) ? rule.rooms : [],
     };
   });

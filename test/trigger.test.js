@@ -255,14 +255,15 @@ function recIn(roomId, body) {
   // ── dryRunRules 帶出 skill-dispatch 的指令/佔位/專案路徑(供試跑顯示「會送什麼」)──
   {
     const rules = [
-      { name: "固定", keywords: ["啟動"], task: "skill-dispatch", project_path: "D:\\P", command: "啟動", use_llm: false, rooms: ["!a:s"] },
-      { name: "帶參", keywords: ["打開"], task: "skill-dispatch", project_path: "D:\\P", command: "啟動 {目標}", use_llm: true, intent: "x", extract: ["目標"], rooms: ["!a:s"] },
+      { name: "固定", keywords: ["啟動"], task: "skill-dispatch", project_path: "D:\\P", target_branch: "main", command: "啟動", use_llm: false, rooms: ["!a:s"] },
+      { name: "帶參", keywords: ["打開"], task: "skill-dispatch", project_path: "D:\\P", target_branch: "feature/{分支}", command: "啟動 {目標}", use_llm: true, intent: "x", extract: ["目標", "分支"], rooms: ["!a:s"] },
     ];
     const res = dryRunRules("啟動", "!a:s", rules);
     const fixed = res.find((r) => r.name === "固定");
     ok("dryRun 帶出 command", fixed.command === "啟動");
     ok("固定指令 has_placeholder=false", fixed.has_placeholder === false);
     ok("dryRun 帶出 project_path", fixed.project_path === "D:\\P");
+    ok("dryRun 帶出 target_branch", fixed.target_branch === "main");
     ok("dryRun 帶出 rooms", Array.isArray(fixed.rooms) && fixed.rooms[0] === "!a:s");
     const param = res.find((r) => r.name === "帶參");
     ok("帶佔位 has_placeholder=true", param.has_placeholder === true);
@@ -279,22 +280,23 @@ function recIn(roomId, body) {
   {
     const enqueued = [];
     const rules = [{ name: "H5多語系", keywords: ["多語系"], task: "skill-dispatch",
-      project_path: "D:\\GB\\GBH5", command: "/i18n {路徑}",
-      use_llm: true, intent: "x", extract: ["路徑"], rooms: ["!r:s"] }];
+      project_path: "D:\\GB\\GBH5", target_branch: "feature/{分支}", command: "/i18n {路徑}",
+      use_llm: true, intent: "x", extract: ["路徑", "分支"], rooms: ["!r:s"] }];
     await runTriggerPipeline(rec("幫我把 activity 轉多語系"), {
       rules,
-      judgeFn: async () => ({ trigger: true, params: { 路徑: "pages/activity" } }),
+      judgeFn: async () => ({ trigger: true, params: { 路徑: "pages/activity", 分支: "activity" } }),
       enqueueFn: (t) => { enqueued.push(t); return "f"; },
       logger: silentLogger,
     });
     ok("skill-dispatch 任務帶 project_path", enqueued[0].project_path === "D:\\GB\\GBH5");
     ok("command 用 params 填充後入列", enqueued[0].command === "/i18n pages/activity");
+    ok("target_branch 用 params 填充後入列", enqueued[0].target_branch === "feature/activity");
   }
 
   {
     const enqueued = [];
     const rules = [{ name: "啟動H5", keywords: ["打開H5"], task: "skill-dispatch",
-      project_path: "D:\\GB\\GBH5", command: "啟動", use_llm: false, rooms: ["!r:s"] }];
+      project_path: "D:\\GB\\GBH5", target_branch: "main", command: "啟動", use_llm: false, rooms: ["!r:s"] }];
     await runTriggerPipeline(rec("幫我打開H5"), {
       rules,
       judgeFn: async () => { throw new Error("不該被呼叫"); },

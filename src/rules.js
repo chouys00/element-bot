@@ -27,14 +27,17 @@ function validateRule(rule, index) {
       throw new Error(`${where}.rooms 必須為非空字串陣列(room_id)`);
     }
   }
-  // project_path / command:通用任務 skill-dispatch 用(專案絕對路徑 + 餵給 skill 的指令模板)。
-  // 兩者選填(舊規則與內建任務不需要);提供時須為非空字串。是否必填交由執行期任務定義自行把關,
+  // project_path / command / target_branch:通用任務 skill-dispatch 用。
+  // 欄位選填(舊規則與內建任務不需要);提供時須為非空字串。是否必填交由存檔與執行期把關,
   // 避免驗證層耦合特定 task 名稱。
   if (rule.project_path !== undefined && (typeof rule.project_path !== "string" || !rule.project_path)) {
     throw new Error(`${where}.project_path 必須為非空字串`);
   }
   if (rule.command !== undefined && (typeof rule.command !== "string" || !rule.command)) {
     throw new Error(`${where}.command 必須為非空字串`);
+  }
+  if (rule.target_branch !== undefined && (typeof rule.target_branch !== "string" || !rule.target_branch)) {
+    throw new Error(`${where}.target_branch 必須為非空字串`);
   }
   return true;
 }
@@ -66,6 +69,9 @@ function saveRules(rulesPath, rules) {
     // 幾乎必為誤設,故存檔時擋下。停用中的規則(enabled:false)可留空,反正本就不觸發。
     if (r.enabled !== false && (!Array.isArray(r.rooms) || r.rooms.length === 0)) {
       throw new Error(`rules[${i}] 啟用中的規則必須至少指定一個房間(rooms 不可為空)`);
+    }
+    if (r.task === "skill-dispatch" && !r.target_branch) {
+      throw new Error(`rules[${i}] skill-dispatch 必須指定 target_branch`);
     }
   });
   return writeJsonAtomic(rulesPath, rules);

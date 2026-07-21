@@ -41,10 +41,13 @@ throws("rooms 含空字串被拒", () => validateRule({ ...good, rooms: ["ok", "
 // project_path / command:通用任務 skill-dispatch 用。選填,提供則須為非空字串。
 ok("project_path 字串通過", validateRule({ ...good, project_path: "D:\\GB\\GBH5" }, 0) === true);
 ok("command 字串通過", validateRule({ ...good, command: "/i18n {路徑}" }, 0) === true);
+ok("target_branch 字串通過", validateRule({ ...good, target_branch: "main" }, 0) === true);
 ok("project_path/command 省略通過", validateRule(good, 0) === true);
 throws("project_path 空字串被拒", () => validateRule({ ...good, project_path: "" }, 0));
 throws("command 空字串被拒", () => validateRule({ ...good, command: "" }, 0));
 throws("project_path 非字串被拒", () => validateRule({ ...good, project_path: 123 }, 0));
+throws("target_branch 空字串被拒", () => validateRule({ ...good, target_branch: "" }, 0));
+throws("target_branch 非字串被拒", () => validateRule({ ...good, target_branch: 123 }, 0));
 
 const tmp = path.join(os.tmpdir(), `rules-test-${Date.now()}.json`);
 fs.writeFileSync(tmp, JSON.stringify([good]), "utf8");
@@ -77,6 +80,12 @@ throws("saveRules 遇壞規則丟錯", () => saveRules(tmpSave, [goodR, { name: 
 ok("saveRules 失敗不改動原檔(整批拒)", loadRules(tmpSave).length === 1);
 ok("saveRules 失敗不留 .tmp 殘檔", !fs.existsSync(tmpSave + ".tmp"));
 throws("saveRules 對非陣列丟錯", () => saveRules(tmpSave, { not: "array" }));
+throws("saveRules 擋 skill-dispatch 缺 target_branch", () => saveRules(tmpSave, [{
+  ...goodR,
+  task: "skill-dispatch",
+  project_path: "D:\\GB\\app",
+  command: "處理",
+}]));
 
 // saveRules:啟用中的規則必須至少指定一個房間(留空=不觸發,幾乎必為誤設);停用規則可留空。
 fs.writeFileSync(tmpSave, JSON.stringify([{ ...good, rooms: ["!a:s"] }]), "utf8");
