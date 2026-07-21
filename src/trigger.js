@@ -1,5 +1,6 @@
 "use strict";
 const { matchRules } = require("./matcher");
+const { ruleConfigurationError } = require("./rules");
 
 // 規則的房間範圍判斷:rule.rooms 缺省/空 = 不觸發任何房間(規則必須明確指定房間才生效);
 // 否則該訊息的 room_id 須落在清單內。避免「忘了填房間」的規則在全部房間亂觸發。
@@ -40,6 +41,11 @@ async function runTriggerPipeline(rec, deps) {
     .filter((rule) => ruleMatchesRoom(rule, roomId));
   for (const rule of matched) {
     try {
+      const configurationError = ruleConfigurationError(rule);
+      if (configurationError) {
+        logger.error(`[trigger] 規則 ${rule.name} 設定錯誤，已停用:`, configurationError);
+        continue;
+      }
       let params = {};
       if (rule.use_llm) {
         const jid = judgeStatus ? judgeStatus.start(rule, rec) : null;
@@ -97,7 +103,8 @@ function dryRunRules(body, roomId, rules) {
     const enabled = ruleEnabled(rule);
     const hasRooms = Array.isArray(rule.rooms) && rule.rooms.length > 0;
     const room_ok = roomSpecified ? ruleMatchesRoom(rule, roomId) : hasRooms;
-    const passesGate = keyword_hit && enabled && room_ok;
+    const configuration_error = ruleConfigurationError(rule);
+    const passesGate = keyword_hit && enabled && room_ok && !configuration_error;
     const command = rule.command || null;
     return {
       name: rule.name,
@@ -106,6 +113,7 @@ function dryRunRules(body, roomId, rules) {
       keyword_hit,
       enabled,
       room_ok,
+      configuration_error,
       triggers: rule.use_llm ? false : passesGate, // 非 LLM:過閘即觸發
       needs_llm: !!rule.use_llm && passesGate,      // LLM:過閘則會送 LLM 判斷
       // skill-dispatch 試跑顯示用:原始指令模板、是否含 {佔位}(帶佔位需實跑 LLM 才有真實值)、專案路徑、房間。

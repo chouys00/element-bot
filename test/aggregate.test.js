@@ -91,13 +91,13 @@ ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id ===
 {
   const approvalRoot = freshRoot();
   const approvalQueue = path.join(approvalRoot, "queue");
-  for (const id of ["unapproved", "pending-approval", "processing-approval", "published", "publish-failed", "legacy"]) {
+  for (const id of ["unapproved", "pending-approval", "processing-approval", "published", "publish-failed", "publish-unknown", "legacy"]) {
     writeTask(approvalQueue, "done", `${id}.json`, {
       rule: "發布", task: "skill-dispatch", project_path: "D:\\GB\\app", target_branch: "main",
       enqueued_at: "2026-07-21T01:00:00.000Z", source: {},
     });
   }
-  for (const [status, id] of [["pending", "pending-approval"], ["processing", "processing-approval"], ["done", "published"], ["failed", "publish-failed"]]) {
+  for (const [status, id] of [["pending", "pending-approval"], ["processing", "processing-approval"], ["done", "published"], ["failed", "publish-failed"], ["unknown", "publish-unknown"]]) {
     fs.mkdirSync(path.join(approvalQueue, "approvals", status), { recursive: true });
     fs.writeFileSync(path.join(approvalQueue, "approvals", status, `${id}.json`), JSON.stringify({
       task_id: id, project_path: "D:\\GB\\app", target_branch: "main",
@@ -115,7 +115,7 @@ ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id ===
   ok("legacy verified 仍相容", approvalTasks.find((t) => t.id === "legacy").verified === true);
 
   const approvalCounts = statusCounts(approvalQueue);
-  ok("approval 狀態統計分流", approvalCounts.unverified === 1 && approvalCounts.publishing === 2 && approvalCounts.publish_failed === 1 && approvalCounts.published === 2);
+  ok("approval 狀態統計分流", approvalCounts.unverified === 1 && approvalCounts.publishing === 2 && approvalCounts.publish_failed === 1 && approvalCounts.publish_unknown === 1 && approvalCounts.published === 2);
   ok("只有未核准任務列入待驗收", approvalCounts.review === 1);
   fs.rmSync(approvalRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
 }

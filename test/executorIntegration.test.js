@@ -16,7 +16,7 @@ function freshQueue() {
   return dir;
 }
 
-const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", command: "把背景改成紅色" };
+const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", target_branch: "main", command: "把背景改成紅色" };
 const CODEX_RESULT = JSON.stringify({ status: "success", output: "背景已經是紅色，不需重複修改。" });
 const findSummary = (lines) => lines.find((entry) => typeof entry.status === "string" && !entry.step && !entry.steps);
 

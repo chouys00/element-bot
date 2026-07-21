@@ -306,5 +306,22 @@ function recIn(roomId, body) {
     ok("固定 command(無佔位)原樣帶入", enqueued[0].command === "啟動");
   }
 
+  {
+    const enqueued = [];
+    const errors = [];
+    const legacyRule = { name: "舊規則", keywords: ["舊任務"], task: "skill-dispatch",
+      project_path: "D:\\GB\\legacy", command: "執行", use_llm: false, rooms: ["!r:s"] };
+    await runTriggerPipeline(rec("請跑舊任務"), {
+      rules: [legacyRule],
+      judgeFn: async () => { throw new Error("設定錯誤時不應呼叫"); },
+      enqueueFn: (t) => { enqueued.push(t); return "f"; },
+      logger: { log() {}, error: (...args) => errors.push(args.join(" ")) },
+    });
+    ok("舊規則缺 target_branch 不入列", enqueued.length === 0);
+    ok("舊規則缺 target_branch 有明確 log", errors.some((line) => line.includes("target_branch")));
+    const preview = dryRunRules("請跑舊任務", "!r:s", [legacyRule])[0];
+    ok("dry-run 顯示配置錯誤且不觸發", /target_branch/.test(preview.configuration_error) && preview.triggers === false);
+  }
+
   console.log(`trigger.test.js: ${passed} 項通過 ✅`);
 })().catch((e) => { console.error(e); process.exit(1); });

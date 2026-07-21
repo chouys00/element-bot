@@ -52,7 +52,7 @@ async function agentExecutor(task, ctx) {
     const t0 = Date.now();
     try {
       emit({ step, status: "run" });
-      const r = await handlers[step]({ workDir, task, emit, logger, shared });
+      const r = await handlers[step]({ id, workDir, task, emit, logger, shared });
       if (step === "summarize") summary = r;
       markStep(state, step, "ok");
       writeState(workDir, state);
@@ -65,7 +65,7 @@ async function agentExecutor(task, ctx) {
     }
   }
   if (!summary) {
-    summary = await handlers.summarize({ workDir, task, emit, logger, shared });
+    summary = await handlers.summarize({ id, workDir, task, emit, logger, shared });
   }
   if (summary) emit(summary);
   return summary;

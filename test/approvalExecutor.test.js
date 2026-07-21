@@ -5,6 +5,7 @@ const { approvalExecutor, buildApprovalPrompt } = require("../src/executors/appr
 const event = {
   task_id: "task-1",
   project_path: "D:\\GB\\app",
+  workspace_path: "D:\\queue\\work\\task-1\\workspace",
   target_branch: "release/task-1",
   approved_by: "王小明",
   approved_at: "2026-07-21T01:02:03.000Z",
@@ -33,7 +34,9 @@ const event = {
     },
   });
   assert.strictEqual(invocation[0], prompt);
-  assert.strictEqual(invocation[1], event.project_path);
+  assert.strictEqual(invocation[1], event.workspace_path);
+  assert.ok(prompt.includes("Task 專屬 Git worktree") && prompt.includes(event.workspace_path));
+  assert.ok(prompt.includes("唯一確認變更歸屬") && prompt.includes("共用 project_path"));
   assert.deepStrictEqual(result, { status: "success", output: "已發布" });
 
   const failed = await approvalExecutor(event, {

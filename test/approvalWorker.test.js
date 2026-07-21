@@ -16,6 +16,7 @@ function freshQueue() {
 }
 
 function pending(queueDir, id, approvedBy = "王小明") {
+  fs.mkdirSync(path.join(queueDir, "work", id, "workspace"), { recursive: true });
   createApproval(queueDir, id, task, approvedBy, () => new Date("2026-07-21T01:00:00.000Z"));
   return path.join(queueDir, "approvals", "pending", `${id}.json`);
 }
@@ -84,13 +85,67 @@ function pending(queueDir, id, approvedBy = "王小明") {
     moveApproval(queueDir, "pending", "processing", "recover-retry");
     writeApproval(queueDir, "processing", { ...findApproval(queueDir, "recover-retry").event, attempt: 1 });
 
-    pending(queueDir, "recover-failed");
-    moveApproval(queueDir, "pending", "processing", "recover-failed");
-    writeApproval(queueDir, "processing", { ...findApproval(queueDir, "recover-failed").event, attempt: 3 });
+    pending(queueDir, "recover-reconcile");
+    moveApproval(queueDir, "pending", "processing", "recover-reconcile");
+    writeApproval(queueDir, "processing", { ...findApproval(queueDir, "recover-reconcile").event, attempt: 3 });
 
-    assert.strictEqual(recoverApprovals(queueDir, silentLogger, 3), 1);
+    pending(queueDir, "recover-success");
+    moveApproval(queueDir, "pending", "processing", "recover-success");
+    writeApproval(queueDir, "processing", {
+      ...findApproval(queueDir, "recover-success").event,
+      attempt: 3,
+      result: { status: "success", output: "push 完成" },
+      completed_at: "2026-07-21T04:00:00.000Z",
+    });
+
+    assert.strictEqual(recoverApprovals(queueDir, silentLogger, 3), 3);
     assert.strictEqual(findApproval(queueDir, "recover-retry").status, "pending");
-    assert.strictEqual(findApproval(queueDir, "recover-failed").status, "failed");
+    assert.strictEqual(findApproval(queueDir, "recover-reconcile").status, "pending");
+    assert.strictEqual(findApproval(queueDir, "recover-reconcile").event.reconciliation_pending, true);
+    assert.strictEqual(findApproval(queueDir, "recover-success").status, "done");
+
+    moveApproval(queueDir, "pending", "processing", "recover-reconcile");
+    writeApproval(queueDir, "processing", {
+      ...findApproval(queueDir, "recover-reconcile").event,
+      attempt: 4,
+      reconciliation_pending: false,
+      reconciliation_attempted: true,
+    });
+    assert.strictEqual(recoverApprovals(queueDir, silentLogger, 3), 0);
+    assert.strictEqual(findApproval(queueDir, "recover-reconcile").status, "unknown");
+    assert.strictEqual(findApproval(queueDir, "recover-reconcile").event.outcome_unknown, true);
+    fs.rmSync(queueDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+  }
+
+  {
+    const queueDir = freshQueue();
+    const pendingDir = path.join(queueDir, "approvals", "pending");
+    fs.mkdirSync(pendingDir, { recursive: true });
+    fs.writeFileSync(path.join(pendingDir, "bad-pending.json"), "{bad", "utf8");
+    fs.writeFileSync(path.join(pendingDir, "partial-pending.json"), "{}", "utf8");
+    pending(queueDir, "good-after-bad");
+    const seen = [];
+    const count = await pollApprovals({
+      queueDir, logger: silentLogger, maxAttempts: 3,
+      executor: async (event) => { seen.push(event.task_id); return { status: "success", output: "ok" }; },
+    });
+    assert.strictEqual(count, 3);
+    assert.deepStrictEqual(seen, ["good-after-bad"]);
+    assert.strictEqual(findApproval(queueDir, "bad-pending").status, "failed");
+    assert.strictEqual(findApproval(queueDir, "bad-pending").event.malformed, true);
+    assert.strictEqual(findApproval(queueDir, "partial-pending").status, "failed");
+    assert.strictEqual(findApproval(queueDir, "partial-pending").event.malformed, true);
+
+    const processingDir = path.join(queueDir, "approvals", "processing");
+    fs.mkdirSync(processingDir, { recursive: true });
+    fs.writeFileSync(path.join(processingDir, "bad-processing.json"), "{bad", "utf8");
+    fs.writeFileSync(path.join(processingDir, "partial-processing.json"), JSON.stringify({ task_id: "partial-processing", attempt: 1 }), "utf8");
+    pending(queueDir, "recover-after-bad");
+    moveApproval(queueDir, "pending", "processing", "recover-after-bad");
+    assert.doesNotThrow(() => recoverApprovals(queueDir, silentLogger, 3));
+    assert.strictEqual(findApproval(queueDir, "bad-processing").status, "failed");
+    assert.strictEqual(findApproval(queueDir, "partial-processing").status, "failed");
+    assert.strictEqual(findApproval(queueDir, "recover-after-bad").status, "pending");
     fs.rmSync(queueDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 

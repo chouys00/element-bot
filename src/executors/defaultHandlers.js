@@ -16,11 +16,11 @@ function make(ops) {
       emit({ step: "prepare", status: "run", note: "目標專案已確認，流程與工作區狀態交由專案自身管理" });
     },
 
-    async ai_run({ workDir, task, emit, shared }) {
+    async ai_run({ id, workDir, task, emit, shared }) {
       const def = getTaskDef(task.task);
       const src = def.sourceDir(task);
       emit({ step: "ai_run", status: "run", note: "派發 Codex 依目標專案自身設定獨立執行" });
-      const output = await ops.runCodex(def.prompt(task), src);
+      const output = await ops.runCodex(def.prompt(task, { id, workDir }), src);
       const result = parseTaskResult(output);
       if (workDir) writeJsonAtomic(path.join(workDir, RESULT_FILE), result);
       if (shared) shared.taskResult = result;

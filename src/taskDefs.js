@@ -12,14 +12,26 @@ const DEFS = {
       if (!projectPath) throw new Error("skill-dispatch 缺 project_path(規則須指定專案絕對路徑)");
       return path.resolve(projectPath);
     },
-    prompt: (task) => {
+    prompt: (task, context = {}) => {
       const command = String((task && task.command) || "");
+      const taskId = String(context.id || "");
+      const workDir = String(context.workDir || "");
+      const targetBranch = String((task && task.target_branch) || "");
+      if (!taskId || !workDir) throw new Error("skill-dispatch 缺 Task-ID 或工作目錄");
+      if (!targetBranch) throw new Error("skill-dispatch 缺 target_branch");
+      const workspacePath = path.join(workDir, "workspace");
       return [
         "你正在規則指定的目標環境中執行已核准的無人值守任務。",
         "請把下方 command 視為使用者已核准交由本次流程直接執行的要求。",
         "依目標環境自己的 AGENTS.md、instructions、skills 與安全規則處理；element-bot 不介入任務如何執行或如何判定完成。",
         "不得自行增加一般性的等待使用者再次確認環節。",
         "本次屬於 Dashboard 驗收前的修改與驗證階段：不得執行 commit，也不得執行 push；驗收後會另行收到發布通知。",
+        `Task-ID：${taskId}`,
+        `target_branch：${targetBranch}`,
+        `Task 專屬工作區：${workspacePath}`,
+        "開始修改前，依專案自身 instructions/skills 使用 git worktree add --detach，從 target_branch 建立或復用上述 Task 專屬工作區。",
+        "所有讀寫、驗證與產出只能在該 Task 專屬 worktree 內完成；共用專案工作目錄不得留下任何修改。",
+        "若無法建立、復用或確認此 Task 專屬 worktree，回報 blocked，不得退回共用工作目錄修改。",
         "先依目標環境規則判斷任務是否已經完成；若已完成，回報 success 與證據，不重複執行。",
         "若尚未完成，直接執行到目標環境所定義的完成點。",
         "只有缺少必要資料、外部條件不成立，或目標環境明確要求人工決策時，才回報 blocked。",

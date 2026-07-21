@@ -36,7 +36,7 @@ function collectTasks(queueDir, roomsMap, limit) {
       let approval = null;
       try { approval = findApproval(queueDir, id); }
       catch (error) {
-        approval = { status: "failed", event: { task_id: id, last_error: String((error && error.message) || error) } };
+        approval = { status: "unknown", event: { task_id: id, outcome_unknown: true, last_error: String((error && error.message) || error) } };
       }
       out.push({
         id,
@@ -69,7 +69,7 @@ function collectTasks(queueDir, roomsMap, limit) {
 function statusCounts(queueDir) {
   const counts = {
     judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, blocked: 0, review: 0,
-    unverified: 0, publishing: 0, publish_failed: 0, published: 0,
+    unverified: 0, publishing: 0, publish_failed: 0, publish_unknown: 0, published: 0,
   };
   let unverifiedDone = 0;
   for (const status of STATUS_DIRS) {
@@ -81,9 +81,10 @@ function statusCounts(queueDir) {
           const id = file.replace(/\.json$/, "");
           let approval = null;
           try { approval = findApproval(queueDir, id); }
-          catch (_) { counts.publish_failed++; continue; }
+          catch (_) { counts.publish_unknown++; continue; }
           if (approval && ["pending", "processing"].includes(approval.status)) counts.publishing++;
           else if (approval && approval.status === "failed") counts.publish_failed++;
+          else if (approval && approval.status === "unknown") counts.publish_unknown++;
           else if ((approval && approval.status === "done") || isVerified(queueDir, id)) counts.published++;
           else unverifiedDone++;
         }

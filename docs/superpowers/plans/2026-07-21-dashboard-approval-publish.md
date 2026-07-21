@@ -6,6 +6,8 @@
 
 **Architecture:** 規則把 `target_branch` 帶入一般任務；Dashboard 只負責以可信內網署名建立唯一 approval outbox event。獨立 approval worker 透過既有 Codex runtime 邊界通知目標專案，Git 操作完全由專案 SKILL 負責，Dashboard 僅彙整發布狀態。
 
+> 2026-07-21 code review 修正：原計畫直接在共用 `project_path` 留未提交變更，會混入其他 Task。實作改為由目標專案 Codex 為每個 Task 建立 `queue/work/<task_id>/workspace` detached worktree，approval 回到同一 worktree。並加入舊規則缺分支停用、成功結果復原、Task-ID 對帳、壞 outbox 隔離、failed／unknown 重試及真實發布 smoke test。
+
 **Tech Stack:** Node.js 22、CommonJS、Node `http`、檔案式 queue、原生瀏覽器 JavaScript、Codex CLI、Node `assert` 測試。
 
 ## Global Constraints

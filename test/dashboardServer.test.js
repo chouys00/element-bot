@@ -63,6 +63,8 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("dashboard 保存可信內網驗收人", htmlText.includes("element-bot.approved-by") && htmlText.includes('id="approverName"'));
   ok("dashboard 使用 approve API", htmlText.includes("/approve") && !htmlText.includes("/verify"));
   ok("dashboard 顯示發布狀態", htmlText.includes('publishing: "提交中"') && htmlText.includes('publish_failed: "發布失敗"'));
+  ok("dashboard 區分已發布與結果未知", htmlText.includes('published: "已發布"') && htmlText.includes('publish_unknown: "發布結果未知"'));
+  ok("dashboard 顯示發布診斷並只允許完整事件重試", htmlText.includes("last_error") && htmlText.includes("approval.attempt") && htmlText.includes("publish-retry") && htmlText.includes("!t.approval.malformed"));
   ok("dashboard 不保留 legacy 顯示分支",
     !htmlText.includes("legacySumHtml") &&
     !htmlText.includes("const isGeneric") &&
@@ -104,6 +106,8 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   fs.writeFileSync(path.join(queueDir, "done", "v1.json"), JSON.stringify({
     rule: "x", task: "skill-dispatch", project_path: root, target_branch: "main",
   }), "utf8");
+  const v1Workspace = path.join(queueDir, "work", "v1", "workspace");
+  fs.mkdirSync(v1Workspace, { recursive: true });
   const approved = await fetch(`${base}/api/tasks/v1/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -115,6 +119,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("approval 保存登入替代署名", approval.approved_by === "王小明");
   ok("approval 分支取自任務而非 request", approval.target_branch === "main");
   ok("approval 帶完整 task_id 與專案路徑", approval.task_id === "v1" && approval.project_path === root);
+  ok("approval 綁定 Task 專屬 worktree", approval.workspace_path === v1Workspace);
   ok("approval 時間由 server 產生", approval.approved_at !== "2000-01-01" && Number.isFinite(Date.parse(approval.approved_at)));
 
   const duplicate = await fetch(`${base}/api/tasks/v1/approve`, {
@@ -139,6 +144,21 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const approveNoName = await fetch(`${base}/api/tasks/v1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "" }) });
   ok("空驗收人不能 approve", approveNoName.status === 400);
 
+  fs.mkdirSync(path.join(queueDir, "approvals", "failed"), { recursive: true });
+  const failedApproval = { ...approval, attempt: 3, last_error: "push 被拒絕", failed_at: "2026-07-21T03:00:00.000Z" };
+  fs.writeFileSync(approvalFile, JSON.stringify(failedApproval), "utf8");
+  fs.renameSync(approvalFile, path.join(queueDir, "approvals", "failed", "v1.json"));
+  const retryPublish = await fetch(`${base}/api/tasks/v1/publish-retry`, { method: "POST" });
+  ok("發布失敗可由 Dashboard 重試", retryPublish.status === 200 && fs.existsSync(approvalFile));
+  const retriedApproval = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
+  ok("重試發布保留原驗收身分與時間", retriedApproval.approved_by === approval.approved_by && retriedApproval.approved_at === approval.approved_at);
+  ok("重試發布重設執行次數但保留重試記錄", retriedApproval.attempt === 0 && retriedApproval.retry_count === 1);
+
+  fs.writeFileSync(path.join(queueDir, "done", "malformed-publish.json"), JSON.stringify({ task: "skill-dispatch", project_path: root, target_branch: "main" }), "utf8");
+  fs.writeFileSync(path.join(queueDir, "approvals", "failed", "malformed-publish.json"), JSON.stringify({ task_id: "malformed-publish", malformed: true, last_error: "bad", attempt: 0 }), "utf8");
+  const retryMalformed = await fetch(`${base}/api/tasks/malformed-publish/publish-retry`, { method: "POST" });
+  ok("損毀 approval 不可從 Dashboard 重試", retryMalformed.status === 409);
+
   const legacyVerify = await fetch(`${base}/api/tasks/v1/verify`, { method: "POST" });
   ok("舊 verify API 已移除", legacyVerify.status === 404 && !fs.existsSync(path.join(queueDir, "work", "v1", "verified.json")));
 
@@ -162,6 +182,11 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("rules GET 附房間 id→名", rd.rooms["!r:s"] === "產品群");
   ok("rules GET 附 task 名單", Array.isArray(rd.tasks) && rd.tasks.length === 1 && rd.tasks[0] === "skill-dispatch");
   ok("rules GET 附監聽清單(檔缺 → env 後備)", Array.isArray(rd.monitor_rooms) && rd.monitor_rooms[0] === "!env:s");
+
+  fs.writeFileSync(rulesPath, JSON.stringify([{ name: "舊規則", keywords: ["x"], task: "skill-dispatch", project_path: root, command: "x", use_llm: false, rooms: ["!r:s"] }]), "utf8");
+  const legacyRules = await (await fetch(`${base}/api/rules`)).json();
+  ok("rules GET 明示舊規則缺分支設定錯誤", /target_branch/.test(legacyRules.configuration_errors[0]));
+  ok("規則頁顯示配置錯誤", rulesHtmlText.includes("configuration_errors") && rulesHtmlText.includes("設定錯誤"));
 
   // PUT /api/rules 合法 → 寫入並可讀回
   const put = await fetch(`${base}/api/rules`, {

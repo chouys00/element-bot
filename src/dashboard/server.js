@@ -6,7 +6,7 @@ const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgr
 const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
 const { taskNames } = require("../taskDefs");
-const { loadRules, saveRules } = require("../rules");
+const { loadRules, ruleConfigurationError, saveRules } = require("../rules");
 const { dryRunRules } = require("../trigger");
 const { projectCheck } = require("../projectCheck");
 const { probeRule } = require("../probe");
@@ -14,7 +14,7 @@ const { judge } = require("../judge");
 const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 const { ensureDir } = require("../fsUtils");
-const { createApproval } = require("../approvalStore");
+const { createApproval, retryApproval } = require("../approvalStore");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -128,7 +128,7 @@ function createServer(deps) {
             return sendJson(res, 200, { error: String((e && e.message) || e), project_check: chk });
           }
         }
-        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve)$/);
+        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve|publish-retry)$/);
         if (m) {
           const id = decodeURIComponent(m[1]);
           if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
@@ -147,6 +147,10 @@ function createServer(deps) {
             const existsElsewhere = STATUS_DIRS.some((status) => status !== "done" && fs.existsSync(path.join(queueDir, status, id + ".json")));
             res.writeHead(existsElsewhere ? 409 : 404);
             return res.end(existsElsewhere ? "task is not done" : "no such task");
+          }
+          if (m[2] === "publish-retry") {
+            try { return sendJson(res, 200, { ok: true, ...retryApproval(queueDir, id) }); }
+            catch (error) { res.writeHead(409); return res.end(String((error && error.message) || error)); }
           }
           let raw;
           try { raw = await readBody(req, 4096); } catch (_) { res.writeHead(413); return res.end("body too large"); }
@@ -173,6 +177,7 @@ function createServer(deps) {
           // monitor_rooms:規則房間 checkbox 的來源(權威監聽清單)。rooms 仍供 id→名 標籤。
           return sendJson(res, 200, {
             rules,
+            configuration_errors: rules.map(ruleConfigurationError),
             rooms: readRoomsMap(storageDir),
             tasks: taskNames(),
             monitor_rooms: resolveRoomIds(storageDir, envRoomIds),

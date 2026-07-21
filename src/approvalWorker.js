@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { approvalExecutor } = require("./executors/approvalExecutor");
-const { findApproval, moveApproval, writeApproval } = require("./approvalStore");
+const { moveApproval, validateApprovalEvent, writeApproval } = require("./approvalStore");
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 
@@ -17,6 +17,25 @@ function resultError(result) {
   return new Error(`專案發布回報 ${status}${output}`);
 }
 
+function deadLetterMalformed(queueDir, fromStatus, taskId, error, nowFn, logger) {
+  const event = {
+    task_id: taskId,
+    malformed: true,
+    attempt: 0,
+    last_error: `approval JSON 解析失敗: ${errorMessage(error)}`,
+    failed_at: nowFn().toISOString(),
+  };
+  moveApproval(queueDir, fromStatus, "failed", taskId);
+  writeApproval(queueDir, "failed", event);
+  fs.writeFileSync(
+    path.join(queueDir, "approvals", "failed", `${taskId}.json.error.txt`),
+    event.last_error,
+    "utf8"
+  );
+  if (logger) logger.error(`[approval] ${taskId} JSON 損毀，已移入 failed`);
+  return "failed";
+}
+
 async function processApproval(filePath, deps) {
   const { queueDir, logger } = deps;
   const executor = deps.executor || approvalExecutor;
@@ -24,9 +43,19 @@ async function processApproval(filePath, deps) {
   const nowFn = deps.nowFn || (() => new Date());
   const taskId = path.basename(filePath, ".json");
 
-  const processingPath = moveApproval(queueDir, "pending", "processing", taskId);
-  let event = JSON.parse(fs.readFileSync(processingPath, "utf8"));
+  let event;
+  try {
+    event = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    validateApprovalEvent(queueDir, event, taskId);
+  } catch (error) {
+    return deadLetterMalformed(queueDir, "pending", taskId, error, nowFn, logger);
+  }
+  moveApproval(queueDir, "pending", "processing", taskId);
   event.attempt = (event.attempt || 0) + 1;
+  if (event.reconciliation_pending) {
+    event.reconciliation_pending = false;
+    event.reconciliation_attempted = true;
+  }
   delete event.completed_at;
   delete event.failed_at;
   writeApproval(queueDir, "processing", event);
@@ -76,14 +105,41 @@ function recoverApprovals(queueDir, logger, maxAttempts = DEFAULT_MAX_ATTEMPTS) 
   let recovered = 0;
   for (const file of files) {
     const taskId = file.replace(/\.json$/, "");
-    const current = findApproval(queueDir, taskId);
-    const event = current.event;
-    if ((event.attempt || 0) >= maxAttempts) {
-      event.last_error = event.last_error || "worker 中斷且已達重試上限";
-      event.failed_at = new Date().toISOString();
-      writeApproval(queueDir, "processing", event);
+    let event;
+    try {
+      event = JSON.parse(fs.readFileSync(path.join(processingDir, file), "utf8"));
+      validateApprovalEvent(queueDir, event, taskId);
+    } catch (error) {
+      deadLetterMalformed(queueDir, "processing", taskId, error, () => new Date(), logger);
+      continue;
+    }
+    if (event.result && event.result.status === "success" && event.completed_at) {
+      moveApproval(queueDir, "processing", "done", taskId);
+      if (logger) logger.log(`[approval] 復原已完成發布 ${taskId}`);
+      recovered++;
+      continue;
+    }
+    if (event.failed_at && event.last_error) {
       moveApproval(queueDir, "processing", "failed", taskId);
-      if (logger) logger.error(`[approval] ${taskId} 中斷後已達重試上限，移入 failed`);
+      if (logger) logger.error(`[approval] 復原已確認失敗的發布 ${taskId}`);
+      continue;
+    }
+    if ((event.attempt || 0) >= maxAttempts) {
+      if (!event.reconciliation_attempted) {
+        event.reconciliation_pending = true;
+        event.last_error = event.last_error || "發布結果不確定，將依 Task-ID 對帳一次";
+        writeApproval(queueDir, "processing", event);
+        moveApproval(queueDir, "processing", "pending", taskId);
+        if (logger) logger.log(`[approval] ${taskId} 發布結果不確定，排入 Task-ID 對帳`);
+        recovered++;
+        continue;
+      }
+      event.outcome_unknown = true;
+      event.unknown_at = new Date().toISOString();
+      event.last_error = "Task-ID 對帳期間再次中斷，發布結果未知";
+      writeApproval(queueDir, "processing", event);
+      moveApproval(queueDir, "processing", "unknown", taskId);
+      if (logger) logger.error(`[approval] ${taskId} 對帳中斷，移入 unknown`);
       continue;
     }
     moveApproval(queueDir, "processing", "pending", taskId);

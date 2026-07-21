@@ -10,7 +10,7 @@ const opsModule = require("../src/executors/ops");
 let passed = 0;
 function ok(name, condition) { assert.ok(condition, name); passed++; }
 const noop = () => {};
-const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", command: "分析專案" };
+const TASK = { task: "skill-dispatch", project_path: "D:\\GB\\sample-app", target_branch: "main", command: "分析專案" };
 
 function freshWork() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "dh-"));
@@ -43,10 +43,11 @@ function freshWork() {
         return JSON.stringify(expected);
       },
     });
-    await h.ai_run({ workDir, task: TASK, emit: (entry) => emitted.push(entry), shared: {} });
+    await h.ai_run({ id: "task-1", workDir, task: { ...TASK, target_branch: "main" }, emit: (entry) => emitted.push(entry), shared: {} });
     const sum = await h.summarize({ workDir, task: TASK, shared: {} });
     ok("executor 不再傳遞結果模式", invocation.length === 2);
     ok("提示詞維持 generic 無人值守契約", invocation[0].includes("無人值守") && invocation[0].includes("完整 output"));
+    ok("提示詞帶專屬 worktree", invocation[0].includes("task-1") && invocation[0].includes(path.join(workDir, "workspace")));
     ok("結果原樣持久化", JSON.parse(fs.readFileSync(path.join(workDir, "task-result.json"), "utf8")).output === expected.output);
     ok("完整輸出交給 dashboard", emitted.some((entry) => entry.ai_output === expected.output));
     ok("沒有改動仍為 done", sum.status === "success" && sum.queueStatus === "done");
@@ -58,7 +59,7 @@ function freshWork() {
   for (const [status, expectedQueue] of [["failed", "failed"], ["blocked", "blocked"], ["partial", "review"]]) {
     const workDir = freshWork();
     const h = make({ runCodex: async () => JSON.stringify({ status, output: status }) });
-    await h.ai_run({ workDir, task: TASK, emit: noop, shared: {} });
+    await h.ai_run({ id: `task-${status}`, workDir, task: TASK, emit: noop, shared: {} });
     const sum = await h.summarize({ workDir, task: TASK, shared: {} });
     ok(`${status} 映射 ${expectedQueue}`, sum.queueStatus === expectedQueue && sum.status === status);
     fs.rmSync(workDir, { recursive: true, force: true });
@@ -67,7 +68,7 @@ function freshWork() {
   {
     const workDir = freshWork();
     const h = make({ runCodex: async () => "not json" });
-    await assert.rejects(() => h.ai_run({ workDir, task: TASK, emit: noop, shared: {} }), /結果回報格式錯誤/);
+    await assert.rejects(() => h.ai_run({ id: "task-invalid", workDir, task: TASK, emit: noop, shared: {} }), /結果回報格式錯誤/);
     passed++;
     fs.rmSync(workDir, { recursive: true, force: true });
   }

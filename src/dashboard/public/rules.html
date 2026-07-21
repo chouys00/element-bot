@@ -112,6 +112,7 @@
 <script src="/resizable.js"></script>
 <script>
 let rules = [];        // 記憶體中的規則陣列(編輯都先改這裡,按「儲存全部」才 PUT)
+let configurationErrors = []; // 舊規則等執行期設定錯誤；修正前後端不會觸發
 let rooms = {};        // room_id -> 房名(供標籤顯示)
 let monitorRooms = []; // 監聽清單(規則房間 checkbox 的來源)
 let tasks = [];        // 可用 task 名稱
@@ -130,6 +131,7 @@ function setMsg(text, cls) { const m = document.getElementById("msg"); m.textCon
 async function load() {
   const d = await fetch("/api/rules").then((r) => r.json());
   rules = Array.isArray(d.rules) ? d.rules : [];
+  configurationErrors = Array.isArray(d.configuration_errors) ? d.configuration_errors : [];
   rooms = d.rooms || {};
   monitorRooms = Array.isArray(d.monitor_rooms) ? d.monitor_rooms : [];
   tasks = Array.isArray(d.tasks) ? d.tasks : [];
@@ -342,8 +344,9 @@ function renderList() {
       ? r.rooms.map((id) => `<span class="tag" title="${esc(id)}">${esc(roomLabel(id))}</span>`).join("")
       : `<span class="err">未指定房間 → 不觸發</span>`;
     const on = isEnabled(r);
+    const configurationError = configurationErrors[i];
     return `<tr class="${on ? "" : "off"}">
-      <td>${esc(r.name)}</td>
+      <td>${esc(r.name)}${configurationError ? `<div class="err">設定錯誤：${esc(configurationError)}</div>` : ""}</td>
       <td>${kw}</td>
       <td>${esc(r.task)}</td>
       <td>${rm}</td>
@@ -479,7 +482,7 @@ async function pushRules(next) {
   setMsg("儲存中…", "muted");
   try {
     const res = await fetch("/api/rules", { method: "PUT", body: JSON.stringify(next) });
-    if (res.ok) { rules = next; renderList(); setMsg("✅ 已儲存,bot 會自動熱載入新規則。", "ok"); return true; }
+    if (res.ok) { rules = next; configurationErrors = []; renderList(); setMsg("✅ 已儲存,bot 會自動熱載入新規則。", "ok"); return true; }
     const t = await res.text();
     setMsg("❌ 儲存失敗:" + t, "err");
     return false;

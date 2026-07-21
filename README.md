@@ -38,9 +38,9 @@ npm start
 
 ## Dashboard 驗收後發布
 
-`skill-dispatch` 規則須設定 `target_branch`。初始任務只修改與驗證，不會 commit 或 push；完成後在 Dashboard 輸入一次驗收人姓名並按「驗收」，worker 才會通知目標專案依自身 skills commit 並 push 到指定分支。
+`skill-dispatch` 規則須設定 `target_branch`；舊規則缺少此欄位時會顯示設定錯誤並停止觸發。初始 Codex 由目標專案依自身規則建立 `queue/work/<task_id>/workspace` 專屬 Git worktree，只修改與驗證，不會 commit 或 push。完成後在 Dashboard 輸入一次驗收人姓名並按「驗收」，worker 才會回到同一 worktree 通知專案 commit 並 push 到指定分支。
 
-驗收人姓名保存在瀏覽器 `localStorage`，屬可信內網署名，不是身分驗證。Dashboard 會顯示待驗收、提交中、已發布或發布失敗；重複點擊不會建立第二筆發布事件。
+驗收人姓名保存在瀏覽器 `localStorage`，屬可信內網署名，不是身分驗證。Dashboard 會顯示待驗收、提交中、已發布、發布失敗或發布結果未知；失敗／未知可重試發布，沿用原核准資料，不需要第二次驗收。
 
 ## 測試
 ```bash

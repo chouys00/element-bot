@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { loadRules, validateRule, saveRules } = require("../src/rules");
+const { loadRules, ruleConfigurationError, validateRule, saveRules } = require("../src/rules");
 
 let passed = 0;
 function ok(name, cond) {
@@ -54,6 +54,8 @@ fs.writeFileSync(tmp, JSON.stringify([good]), "utf8");
 const loaded = loadRules(tmp);
 ok("loadRules 回傳陣列", Array.isArray(loaded) && loaded.length === 1);
 ok("loadRules 內容正確", loaded[0].name === "deploy");
+ok("舊 skill-dispatch 缺 target_branch 會回設定錯誤", /target_branch/.test(ruleConfigurationError({ ...good, task: "skill-dispatch" })));
+ok("完整 skill-dispatch 無設定錯誤", ruleConfigurationError({ ...good, task: "skill-dispatch", target_branch: "main" }) === null);
 fs.unlinkSync(tmp);
 
 const tmpBad = path.join(os.tmpdir(), `rules-bad-${Date.now()}.json`);

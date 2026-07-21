@@ -42,6 +42,13 @@ function validateRule(rule, index) {
   return true;
 }
 
+function ruleConfigurationError(rule) {
+  if (rule && rule.task === "skill-dispatch" && !rule.target_branch) {
+    return "skill-dispatch 缺少 target_branch；設定目標分支前不會觸發";
+  }
+  return null;
+}
+
 // 從檔案載入並逐條驗證規則,回傳規則陣列。
 function loadRules(rulesPath) {
   // rules.json 不入版控、隨部署由 dashboard 建立(saveRules 首次存檔即建檔)。
@@ -77,4 +84,4 @@ function saveRules(rulesPath, rules) {
   return writeJsonAtomic(rulesPath, rules);
 }
 
-module.exports = { loadRules, validateRule, saveRules };
+module.exports = { loadRules, ruleConfigurationError, validateRule, saveRules };
