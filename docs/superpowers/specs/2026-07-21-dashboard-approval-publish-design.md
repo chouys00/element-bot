@@ -8,6 +8,7 @@ Dashboard 的「驗收」是每項任務唯一一次人工核准。核准後由 
 
 - 不建置登入系統。瀏覽器第一次使用時保存驗收人姓名於 `localStorage`，驗收時自動送出；此姓名是可信內網署名，不具防偽能力。
 - `target_branch` 設於 Dashboard 規則，經 trigger 原樣帶入任務。驗收 request 不得自行指定分支。
+- 初始任務只允許修改與驗證，明確禁止 commit、push；Git 發布只能由驗收後的專案通知觸發。
 - 採獨立 approval outbox，不讓 Dashboard HTTP request 長時間執行 Codex，也不把核准工作混入一般任務清單。
 - 同一 `task_id` 只能建立一筆核准事件。重複 request 回傳既有狀態，不再次通知。
 

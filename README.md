@@ -36,6 +36,12 @@ npm start
 ```
 啟動後到目標房間發一則新訊息,`output/messages.jsonl` 應新增一行解密後的明文。Ctrl+C 結束。
 
+## Dashboard 驗收後發布
+
+`skill-dispatch` 規則須設定 `target_branch`。初始任務只修改與驗證，不會 commit 或 push；完成後在 Dashboard 輸入一次驗收人姓名並按「驗收」，worker 才會通知目標專案依自身 skills commit 並 push 到指定分支。
+
+驗收人姓名保存在瀏覽器 `localStorage`，屬可信內網署名，不是身分驗證。Dashboard 會顯示待驗收、提交中、已發布或發布失敗；重複點擊不會建立第二筆發布事件。
+
 ## 測試
 ```bash
 npm test

@@ -35,6 +35,11 @@ const agentLaunchFiles = filesUnder(path.join(repo, "src"))
   .map((file) => path.relative(repo, file).replace(/\\/g, "/"));
 assert.deepStrictEqual(agentLaunchFiles, ["src/codexRunner.js"]);
 
+const gitLaunchFiles = filesUnder(path.join(repo, "src"))
+  .filter((file) => /(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\s*\(\s*["'`]git["'`]/i.test(fs.readFileSync(file, "utf8")))
+  .map((file) => path.relative(repo, file).replace(/\\/g, "/"));
+assert.deepStrictEqual(gitLaunchFiles, [], `element-bot 不得直接啟動 Git: ${gitLaunchFiles.join(", ")}`);
+
 const violations = [];
 for (const file of files) {
   const text = fs.readFileSync(file, "utf8");

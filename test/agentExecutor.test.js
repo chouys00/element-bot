@@ -38,7 +38,7 @@ function fakeHandlers(calls) {
     ok("executor 回傳 summarize 結果", result && result.status === "OK" && result.summary === "done");
     const st = readState(path.join(q, "work", "j1"));
     ok("state 全 ok", st && Object.values(st.steps).every((v) => v === "ok"));
-    fs.rmSync(q, { recursive: true, force: true });
+    fs.rmSync(q, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
   // 續跑:預先把 prepare/ai_run 標 ok → 只應跑 verify/summarize
   {
@@ -50,7 +50,7 @@ function fakeHandlers(calls) {
     const calls = [];
     await agentExecutor({ task: "t" }, { queueDir: q, id: "j2", logger: silentLogger, handlers: fakeHandlers(calls) });
     ok("只跑剩餘兩步", calls.join(",") === "verify,summarize");
-    fs.rmSync(q, { recursive: true, force: true });
+    fs.rmSync(q, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
   // 步驟丟錯:標 error 並向外丟(worker 會移 failed/)
   {
@@ -65,7 +65,7 @@ function fakeHandlers(calls) {
     ok("ai_run 標 error", st && st.steps.ai_run === "error");
     const lines = readLogLines(q, "j3");
     ok("log 有 error 進度", lines.some((o) => o.step === "ai_run" && o.status === "error"));
-    fs.rmSync(q, { recursive: true, force: true });
+    fs.rmSync(q, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
   console.log(`agentExecutor.test.js: ${passed} 項通過 ✅`);
 })().catch((e) => { console.error(e); process.exit(1); });

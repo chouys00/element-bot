@@ -52,7 +52,8 @@ passed++;
   ok("generic 任務已核准", genericPrompt.includes("已核准") && genericPrompt.includes("無人值守"));
   ok("不得自行等待確認", genericPrompt.includes("不得自行增加") && genericPrompt.includes("再次確認"));
   ok("已完成回報成功且不重做", genericPrompt.includes("已經完成") && genericPrompt.includes("success") && genericPrompt.includes("不重複"));
-  ok("沒有任務類型假設", !/Git|commit|Jenkins|客服|聊天室|修改檔案/.test(genericPrompt));
+  ok("Dashboard 驗收前禁止 commit/push", genericPrompt.includes("Dashboard 驗收") && genericPrompt.includes("不得執行 commit") && genericPrompt.includes("不得執行 push"));
+  ok("沒有無關任務類型假設", !/Jenkins|客服|聊天室/.test(genericPrompt));
 }
 
 {

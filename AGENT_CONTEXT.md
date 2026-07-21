@@ -63,6 +63,25 @@
 
 dashboard(`npm run dashboard`)提供任務監控、規則編輯與試跑介面。
 
+## Dashboard 驗收與發布
+
+`skill-dispatch` 規則可設定 `target_branch`，此欄位會隨原始任務保存。初始 Codex 執行只負責修改與驗證，明確禁止 commit 與 push；Dashboard 人工驗收後才會建立發布事件。
+
+驗收人姓名由各瀏覽器保存於 `localStorage`，屬可信內網署名，不提供防偽或登入驗證。驗收事件包含：
+
+```json
+{
+  "task_id": "原始完整任務 ID",
+  "project_path": "目標專案絕對路徑",
+  "target_branch": "目標分支",
+  "approved_by": "驗收人姓名",
+  "approved_at": "伺服器產生的 ISO 8601 時間",
+  "attempt": 0
+}
+```
+
+事件依狀態保存於 `queue/approvals/pending|processing|done|failed/`。worker 透過 Codex 通知目標專案依自身 AGENTS.md、instructions 與 skills 完成 commit、push；commit message 必須包含 `Task-ID: ...` 與 `Approved-by: ...`。element-bot 不直接執行或檢查 Git。
+
 ## 驗收連結（v1.7+）
 
 任務專案若產生可供人員驗收的資源，可在 Codex 通用結果的 `output` 以獨立的「驗收連結」區塊宣告完整 `http://` 或 `https://` URL。例如：

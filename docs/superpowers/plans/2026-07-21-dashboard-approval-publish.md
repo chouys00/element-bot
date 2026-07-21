@@ -14,6 +14,7 @@
 - 行為變更遵守 TDD：每項功能先寫會失敗的測試，再做最小實作。
 - 只有 `src/codexRunner.js` 可以啟動 Codex；其他模組只能經既有 `ops.runCodex()`。
 - element-bot 不得啟動、解析或檢查 Git command；commit 與 push 由目標專案 SKILL 執行。
+- 初始 skill-dispatch prompt 必須禁止 commit、push；只有 Dashboard 驗收後的 approval prompt 可以要求發布。
 - 不檢查或硬編碼目標專案 skill 目錄；只通知專案依自身 AGENTS.md、instructions 與 skills 處理。
 - 自動測試只能使用暫存目錄與注入的假 Codex，不得觸發正式規則指向的專案。
 - 保留工作樹既有 `package-lock.json` 修改，不納入本功能提交。
