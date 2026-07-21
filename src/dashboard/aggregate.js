@@ -4,6 +4,7 @@ const path = require("path");
 const { translateRoom } = require("../roomsSidecar");
 const { extractAcceptanceLinks } = require("../links");
 const { formatTaskNumber } = require("../taskNumber");
+const { findApproval } = require("../approvalStore");
 
 // judging/judged 為 LLM 判斷紀錄(見 judgeStatus.js):judging=判斷中,judged=判定不觸發/判斷失敗。
 // 一併列進任務清單,使用者才分得清「沒收到 vs 判斷中 vs LLM 拒絕 vs 判斷失敗」。
@@ -32,6 +33,11 @@ function collectTasks(queueDir, roomsMap, limit) {
         continue;
       }
       const src = task.source || {};
+      let approval = null;
+      try { approval = findApproval(queueDir, id); }
+      catch (error) {
+        approval = { status: "failed", event: { task_id: id, last_error: String((error && error.message) || error) } };
+      }
       out.push({
         id,
         task_number: formatTaskNumber(id),
@@ -44,11 +50,13 @@ function collectTasks(queueDir, roomsMap, limit) {
         body: src.body,
         event_id: src.event_id,
         enqueued_at: task.enqueued_at,
-        verified: isVerified(queueDir, id),
+        verified: isVerified(queueDir, id) || !!(approval && approval.status === "done"),
+        ...(approval ? { approval: { status: approval.status, ...approval.event } } : {}),
         ...(task.judge ? { judge: task.judge } : {}),
         // skill-dispatch(通用「計程車」任務)專用:任務清單只顯示得到 task === "skill-dispatch",
         // 分不出送去哪個專案、送了什麼指令,故把規則存進 task 的這兩欄一併帶出供 dashboard 顯示。
         ...(task.project_path ? { project_path: task.project_path } : {}),
+        ...(task.target_branch ? { target_branch: task.target_branch } : {}),
         ...(task.command ? { command: task.command } : {}),
       });
     }
@@ -59,14 +67,26 @@ function collectTasks(queueDir, roomsMap, limit) {
 
 // 各狀態目錄的 .json 數量。額外給 review = done 但尚未驗收的數量(供「待驗收 / 完成」拆分)。
 function statusCounts(queueDir) {
-  const counts = { judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, blocked: 0, review: 0, unverified: 0 };
+  const counts = {
+    judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, blocked: 0, review: 0,
+    unverified: 0, publishing: 0, publish_failed: 0, published: 0,
+  };
   let unverifiedDone = 0;
   for (const status of STATUS_DIRS) {
     try {
       const files = fs.readdirSync(path.join(queueDir, status)).filter((f) => f.endsWith(".json"));
       counts[status] = files.length;
       if (status === "done") {
-        unverifiedDone = files.filter((f) => !isVerified(queueDir, f.replace(/\.json$/, ""))).length;
+        for (const file of files) {
+          const id = file.replace(/\.json$/, "");
+          let approval = null;
+          try { approval = findApproval(queueDir, id); }
+          catch (_) { counts.publish_failed++; continue; }
+          if (approval && ["pending", "processing"].includes(approval.status)) counts.publishing++;
+          else if (approval && approval.status === "failed") counts.publish_failed++;
+          else if ((approval && approval.status === "done") || isVerified(queueDir, id)) counts.published++;
+          else unverifiedDone++;
+        }
       }
     } catch (_) {}
   }

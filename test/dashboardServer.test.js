@@ -60,6 +60,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     !htmlText.includes('data-act="open"') &&
     !htmlText.includes("/open"));
   ok("dashboard 提供驗收連結區塊", htmlText.includes("驗收連結") && !htmlText.includes("相關連結"));
+  ok("dashboard 保存可信內網驗收人", htmlText.includes("element-bot.approved-by") && htmlText.includes('id="approverName"'));
+  ok("dashboard 使用 approve API", htmlText.includes("/approve") && !htmlText.includes("/verify"));
+  ok("dashboard 顯示發布狀態", htmlText.includes('publishing: "提交中"') && htmlText.includes('publish_failed: "發布失敗"'));
   ok("dashboard 不保留 legacy 顯示分支",
     !htmlText.includes("legacySumHtml") &&
     !htmlText.includes("const isGeneric") &&
@@ -97,15 +100,47 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("failed/ 任務已無", !fs.existsSync(path.join(queueDir, "failed", "r1.json")));
   ok("error.txt 已清", !fs.existsSync(path.join(queueDir, "failed", "r1.json.error.txt")));
 
-  // POST verify:寫 work/<id>/verified.json
-  fs.writeFileSync(path.join(queueDir, "done", "v1.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
-  const vf = await fetch(`${base}/api/tasks/v1/verify`, { method: "POST" });
-  ok("verify 回 200", vf.status === 200);
-  ok("有 verified 標記", fs.existsSync(path.join(queueDir, "work", "v1", "verified.json")));
+  // POST approve:只接受驗收人，其他欄位一律取既有 done task 與 server 時間。
+  fs.writeFileSync(path.join(queueDir, "done", "v1.json"), JSON.stringify({
+    rule: "x", task: "skill-dispatch", project_path: root, target_branch: "main",
+  }), "utf8");
+  const approved = await fetch(`${base}/api/tasks/v1/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approved_by: "王小明", target_branch: "evil", approved_at: "2000-01-01" }),
+  });
+  ok("首次 approve 回 201", approved.status === 201);
+  const approvalFile = path.join(queueDir, "approvals", "pending", "v1.json");
+  const approval = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
+  ok("approval 保存登入替代署名", approval.approved_by === "王小明");
+  ok("approval 分支取自任務而非 request", approval.target_branch === "main");
+  ok("approval 帶完整 task_id 與專案路徑", approval.task_id === "v1" && approval.project_path === root);
+  ok("approval 時間由 server 產生", approval.approved_at !== "2000-01-01" && Number.isFinite(Date.parse(approval.approved_at)));
 
-  // verify 不存在的任務 → 404
-  const vno = await fetch(`${base}/api/tasks/ghost/verify`, { method: "POST" });
-  ok("verify 無此任務 → 404", vno.status === 404);
+  const duplicate = await fetch(`${base}/api/tasks/v1/approve`, {
+    method: "POST",
+    body: JSON.stringify({ approved_by: "另一人" }),
+  });
+  ok("重複 approve 回既有事件", duplicate.status === 200);
+  const approvalAgain = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
+  ok("重複 approve 不覆寫人員或時間", approvalAgain.approved_by === approval.approved_by && approvalAgain.approved_at === approval.approved_at);
+
+  const approveUnknown = await fetch(`${base}/api/tasks/ghost/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  ok("approve 無此任務 → 404", approveUnknown.status === 404);
+  fs.writeFileSync(path.join(queueDir, "pending", "p1.json"), JSON.stringify({ task: "skill-dispatch", project_path: root, target_branch: "main" }), "utf8");
+  const approvePending = await fetch(`${base}/api/tasks/p1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  ok("非 done 任務不能 approve", approvePending.status === 409);
+  fs.writeFileSync(path.join(queueDir, "done", "n1.json"), JSON.stringify({ task: "other", project_path: root, target_branch: "main" }), "utf8");
+  const approveOther = await fetch(`${base}/api/tasks/n1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  ok("非 skill-dispatch 不能 approve", approveOther.status === 400);
+  fs.writeFileSync(path.join(queueDir, "done", "m1.json"), JSON.stringify({ task: "skill-dispatch", project_path: root }), "utf8");
+  const approveMissingBranch = await fetch(`${base}/api/tasks/m1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  ok("缺 target_branch 不能 approve", approveMissingBranch.status === 400);
+  const approveNoName = await fetch(`${base}/api/tasks/v1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "" }) });
+  ok("空驗收人不能 approve", approveNoName.status === 400);
+
+  const legacyVerify = await fetch(`${base}/api/tasks/v1/verify`, { method: "POST" });
+  ok("舊 verify API 已移除", legacyVerify.status === 404 && !fs.existsSync(path.join(queueDir, "work", "v1", "verified.json")));
 
   // 公共電腦不提供遠端開啟專案 API。
   fs.mkdirSync(path.join(queueDir, "logs"), { recursive: true });

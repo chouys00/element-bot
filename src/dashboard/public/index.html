@@ -41,6 +41,7 @@
   tr.task.sel { background: #283041; }
   .badge { padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; }
   .pending { background: #9ca3af; } .processing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed { background: #ef4444; } .blocked { background: #b45309; }
+  .publishing { background: #2563eb; } .publish_failed { background: #be123c; }
   .judging { background: #8b5cf6; } .rejected { background: #4b5563; } .judge_error { background: #b45309; }
   pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
   .muted { color: #777; }
@@ -53,7 +54,8 @@
 <header>
   <span class="dot" id="botStatus">…</span>
   <span class="counts" id="counts"></span>
-  <button id="roomsBtn" class="abtn" style="margin-left:auto">🏠 監聽房間</button>
+  <label class="muted" style="margin-left:auto">驗收人 <input id="approverName" type="text" maxlength="100" placeholder="請輸入姓名" style="width:120px;background:#0f1115;color:#e6e6e6;border:1px solid #30363d;border-radius:6px;padding:4px 6px" /></label>
+  <button id="roomsBtn" class="abtn">🏠 監聽房間</button>
   <button id="notifyBtn" class="abtn">🔔 通知設定</button>
   <a href="/rules.html" class="abtn" style="text-decoration:none">⚙ 規則設定</a>
 </header>
@@ -126,7 +128,13 @@
 
 <script src="/resizable.js"></script>
 <script>
-const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "完成", failed: "失敗", blocked: "受阻", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
+const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", publishing: "提交中", publish_failed: "發布失敗", done: "完成", failed: "失敗", blocked: "受阻", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
+const APPROVER_KEY = "element-bot.approved-by";
+const approverInput = document.getElementById("approverName");
+try { approverInput.value = localStorage.getItem(APPROVER_KEY) || ""; } catch (_) {}
+approverInput.addEventListener("input", () => {
+  try { localStorage.setItem(APPROVER_KEY, approverInput.value.trim()); } catch (_) {}
+});
 let selectedId = null;
 let lastTasks = [];
 // 詳情面板上次渲染的任務與 HTML,用來判斷這次輪詢要不要真的重建 DOM。
@@ -138,7 +146,11 @@ let lastDetailHtml = null;
 // 顯示用狀態:done 但尚未驗收 → 待驗收(review);已驗收 → 完成(done)。
 // judging = LLM 判斷進行中;judged = 已判完但沒觸發(拒絕或判斷失敗)。
 function displayStatus(t) {
-  if (t.status === "done") return t.verified ? "done" : "review";
+  if (t.status === "done") {
+    if (t.approval && ["pending", "processing"].includes(t.approval.status)) return "publishing";
+    if (t.approval && t.approval.status === "failed") return "publish_failed";
+    return t.verified ? "done" : "review";
+  }
   if (t.status === "judged") return t.judge && t.judge.status === "error" ? "judge_error" : "rejected";
   return t.status;
 }
@@ -181,9 +193,9 @@ function renderStatus(s) {
   document.getElementById("botStatus").textContent = s.bot_online ? "🟢 bot 連線中" : "🔴 bot 離線";
   const c = s.counts || {};
   const review = c.review || 0;
-  const finished = (c.done || 0) - (c.unverified || 0); // 完成 = done 之中已驗收的
+  const finished = c.published || 0;
   document.getElementById("counts").innerHTML =
-    `<span>LLM 判斷中 ${c.judging || 0}</span><span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>受阻 ${c.blocked || 0}</span><span>待驗收 ${review}</span><span>完成 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
+    `<span>LLM 判斷中 ${c.judging || 0}</span><span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>受阻 ${c.blocked || 0}</span><span>待驗收 ${review}</span><span>提交中 ${c.publishing || 0}</span><span>發布失敗 ${c.publish_failed || 0}</span><span>完成 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
 }
 
 function renderMsgs(msgs) {
@@ -273,11 +285,18 @@ async function renderDetail() {
   // 才看得到當初這則任務具體是「送去哪、送了什麼」。
   const dispatchHtml = t.task === "skill-dispatch" && t.project_path
     ? `<div><span class="k">專案路徑</span> <code>${esc(t.project_path)}</code></div>` +
+      (t.target_branch ? `<div><span class="k">目標分支</span> <code>${esc(t.target_branch)}</code></div>` : "") +
       (t.command ? `<div><span class="k">送出指令</span> <code>${esc(t.command)}</code></div>` : "")
     : "";
 
+  const approvalHtml = t.approval
+    ? `<div><span class="k">驗收人</span> ${esc(t.approval.approved_by || "—")}</div>` +
+      `<div><span class="k">驗收時間</span> ${timeFull(t.approval.approved_at)}</div>` +
+      `<div><span class="k">發布狀態</span> ${badge(displayStatus(t))}</div>`
+    : "";
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-    ${t.status === "done" ? `<button data-act="verify" class="abtn">${t.verified ? "✓ 已驗收" : "✓ 驗收"}</button>` : ""}
+    ${t.status === "done" && !t.verified && !t.approval ? `<button data-act="approve" class="abtn">✓ 驗收</button>` : ""}
+    ${t.status === "done" && t.verified && !t.approval ? `<span class="muted">✓ 已驗收</span>` : ""}
     ${(t.status === "failed" || t.status === "blocked") ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
   </div>`;
 
@@ -289,6 +308,7 @@ async function renderDetail() {
     <div><span class="k">發送者</span> ${esc(t.sender)}</div>
     <div><span class="k">規則</span> ${esc(t.rule)} → ${esc(t.task)}</div>
     ${dispatchHtml}
+    ${approvalHtml}
     <div><span class="k">來源訊息</span> ${esc(t.body)}</div>
     ${judgeHtml}
     ${aiHtml}
@@ -312,7 +332,18 @@ async function renderDetail() {
 }
 
 async function doAction(act) {
-  await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/${act}`, { method: "POST" }).catch(() => {});
+  if (act === "approve") {
+    const approvedBy = approverInput.value.trim();
+    if (!approvedBy) { alert("請先輸入驗收人姓名"); approverInput.focus(); return; }
+    const response = await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved_by: approvedBy }),
+    }).catch(() => null);
+    if (!response || !response.ok) alert("驗收失敗:" + (response ? await response.text() : "無法連線"));
+  } else {
+    await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/${act}`, { method: "POST" }).catch(() => {});
+  }
   refresh();
 }
 

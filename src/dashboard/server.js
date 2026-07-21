@@ -14,6 +14,7 @@ const { judge } = require("../judge");
 const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 const { ensureDir } = require("../fsUtils");
+const { createApproval } = require("../approvalStore");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -127,7 +128,7 @@ function createServer(deps) {
             return sendJson(res, 200, { error: String((e && e.message) || e), project_check: chk });
           }
         }
-        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|verify)$/);
+        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve)$/);
         if (m) {
           const id = decodeURIComponent(m[1]);
           if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
@@ -141,12 +142,26 @@ function createServer(deps) {
             fs.renameSync(from, to);
             return sendJson(res, 200, { ok: true });
           }
-          // verify:先確認任務存在,避免替不存在的 id 建立孤兒 work 目錄
-          const exists = STATUS_DIRS.some((s) => fs.existsSync(path.join(queueDir, s, id + ".json")));
-          if (!exists) { res.writeHead(404); return res.end("no such task"); }
-          const workDir = ensureDir(path.join(queueDir, "work", id));
-          fs.writeFileSync(path.join(workDir, "verified.json"), JSON.stringify({ verified_at: new Date().toISOString() }), "utf8");
-          return sendJson(res, 200, { ok: true });
+          const doneFile = path.join(queueDir, "done", id + ".json");
+          if (!fs.existsSync(doneFile)) {
+            const existsElsewhere = STATUS_DIRS.some((status) => status !== "done" && fs.existsSync(path.join(queueDir, status, id + ".json")));
+            res.writeHead(existsElsewhere ? 409 : 404);
+            return res.end(existsElsewhere ? "task is not done" : "no such task");
+          }
+          let raw;
+          try { raw = await readBody(req, 4096); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+          let body;
+          try { body = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          let task;
+          try { task = JSON.parse(fs.readFileSync(doneFile, "utf8")); }
+          catch (_) { res.writeHead(500); return res.end("bad task json"); }
+          try {
+            const approval = createApproval(queueDir, id, task, body && body.approved_by);
+            return sendJson(res, approval.created ? 201 : 200, { ok: true, ...approval });
+          } catch (error) {
+            res.writeHead(400);
+            return res.end(String((error && error.message) || error));
+          }
         }
         res.writeHead(404); return res.end("not found");
       }

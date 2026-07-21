@@ -87,6 +87,39 @@ fs.writeFileSync(path.join(queueDir, "work", "t1", "verified.json"), "{}", "utf8
 ok("verified 反映標記檔", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t1").verified === true);
 ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t2").verified === false);
 
+// approval outbox 狀態附回原始 done task，並與 legacy verified 分開統計。
+{
+  const approvalRoot = freshRoot();
+  const approvalQueue = path.join(approvalRoot, "queue");
+  for (const id of ["unapproved", "pending-approval", "processing-approval", "published", "publish-failed", "legacy"]) {
+    writeTask(approvalQueue, "done", `${id}.json`, {
+      rule: "發布", task: "skill-dispatch", project_path: "D:\\GB\\app", target_branch: "main",
+      enqueued_at: "2026-07-21T01:00:00.000Z", source: {},
+    });
+  }
+  for (const [status, id] of [["pending", "pending-approval"], ["processing", "processing-approval"], ["done", "published"], ["failed", "publish-failed"]]) {
+    fs.mkdirSync(path.join(approvalQueue, "approvals", status), { recursive: true });
+    fs.writeFileSync(path.join(approvalQueue, "approvals", status, `${id}.json`), JSON.stringify({
+      task_id: id, project_path: "D:\\GB\\app", target_branch: "main",
+      approved_by: "王小明", approved_at: "2026-07-21T02:00:00.000Z", attempt: 1,
+    }), "utf8");
+  }
+  fs.mkdirSync(path.join(approvalQueue, "work", "legacy"), { recursive: true });
+  fs.writeFileSync(path.join(approvalQueue, "work", "legacy", "verified.json"), "{}", "utf8");
+
+  const approvalTasks = collectTasks(approvalQueue, {}, 100);
+  const processingApproval = approvalTasks.find((t) => t.id === "processing-approval");
+  ok("task API 帶 approval 狀態與人員", processingApproval.approval.status === "processing" && processingApproval.approval.approved_by === "王小明");
+  ok("提交中尚未算發布完成", processingApproval.verified === false);
+  ok("approval done 算發布完成", approvalTasks.find((t) => t.id === "published").verified === true);
+  ok("legacy verified 仍相容", approvalTasks.find((t) => t.id === "legacy").verified === true);
+
+  const approvalCounts = statusCounts(approvalQueue);
+  ok("approval 狀態統計分流", approvalCounts.unverified === 1 && approvalCounts.publishing === 2 && approvalCounts.publish_failed === 1 && approvalCounts.published === 2);
+  ok("只有未核准任務列入待驗收", approvalCounts.review === 1);
+  fs.rmSync(approvalRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+}
+
 writeTask(queueDir, "blocked", "blk.json", { rule: "禪道", task: "skill-dispatch", enqueued_at: "2026-06-26T02:40:00.000Z", source: {} });
 writeTask(queueDir, "review", "part.json", { rule: "禪道", task: "skill-dispatch", enqueued_at: "2026-06-26T02:50:00.000Z", source: {} });
 {
