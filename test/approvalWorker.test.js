@@ -15,7 +15,7 @@ function freshQueue() {
   return dir;
 }
 
-function pending(queueDir, id, approvedBy = "王小明") {
+function pending(queueDir, id, approvedBy = "worker.tester") {
   fs.mkdirSync(path.join(queueDir, "work", id, "workspace"), { recursive: true });
   createApproval(queueDir, id, task, approvedBy, () => new Date("2026-07-21T01:00:00.000Z"));
   return path.join(queueDir, "approvals", "pending", `${id}.json`);
@@ -34,7 +34,7 @@ function pending(queueDir, id, approvedBy = "王小明") {
       executor: async (event) => {
         sawProcessing = fs.existsSync(path.join(queueDir, "approvals", "processing", "success.json"));
         assert.strictEqual(event.attempt, 1);
-        assert.strictEqual(event.approved_by, "王小明");
+        assert.strictEqual(event.approved_by, "worker.tester");
         return { status: "success", output: "已發布" };
       },
     });

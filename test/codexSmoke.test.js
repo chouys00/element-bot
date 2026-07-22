@@ -70,7 +70,7 @@ function runSmokeCodex(prompt, cwd) {
     git(["worktree", "add", "-q", "--detach", workspaceB, "main"]);
     fs.writeFileSync(path.join(workspaceB, "other-task.txt"), "TASK_B_NOT_APPROVED\n", "utf8");
 
-    const created = createApproval(queueDir, taskId, task, "Smoke 驗收人", () => new Date("2026-07-21T01:02:03.000Z"));
+    const created = createApproval(queueDir, taskId, task, "smoke.tester", () => new Date("2026-07-21T01:02:03.000Z"));
     const result = await approvalExecutor(created.event, {
       runCodex: runSmokeCodex,
     });
@@ -81,7 +81,7 @@ function runSmokeCodex(prompt, cwd) {
     assert.throws(() => git(["show", "main:human-dirty.txt"], remoteDir));
     const message = git(["log", "-1", "--format=%B", "main"], remoteDir);
     assert.match(message, /Task-ID: smoke-task-a/);
-    assert.match(message, /Approved-by: Smoke 驗收人/);
+    assert.match(message, /Approved-by: smoke\.tester/);
     const commitCount = git(["rev-list", "--count", "main"], remoteDir);
 
     const repeated = await approvalExecutor(created.event, { runCodex: runSmokeCodex });

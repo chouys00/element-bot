@@ -6,7 +6,7 @@ Dashboard 的「驗收」是每項任務唯一一次人工核准。核准後由 
 
 ## 決策
 
-- 不建置登入系統。瀏覽器第一次使用時保存驗收人姓名於 `localStorage`，驗收時自動送出；此姓名是可信內網署名，不具防偽能力。
+- 不建置登入系統。第一次按驗收時要求輸入公司 ID（例如 `patrick.zyx`）並保存於 `localStorage`，後續自動送出；右上角唯讀顯示並可更換。此 ID 是可信內網署名，不具防偽能力。
 - `target_branch` 設於 Dashboard 規則，經 trigger 原樣帶入任務。驗收 request 不得自行指定分支。
 - 初始任務只允許修改與驗證，明確禁止 commit、push；Git 發布只能由驗收後的專案通知觸發。
 - 初始任務把 `task_id`、`target_branch` 與 `queue/work/<task_id>/workspace` 交給目標專案，由專案 Codex 建立 detached task-specific Git worktree。所有變更只留在此 worktree；無法確認隔離時回報 blocked。
@@ -38,7 +38,7 @@ queue/approvals/unknown/<task_id>.json
   "project_path": "目標專案絕對路徑",
   "workspace_path": "Task 專屬 worktree 絕對路徑",
   "target_branch": "目標分支",
-  "approved_by": "Dashboard 保存的姓名",
+  "approved_by": "Dashboard 保存的公司 ID",
   "approved_at": "伺服器產生的 ISO 8601 時間",
   "attempt": 0
 }
@@ -50,8 +50,8 @@ queue/approvals/unknown/<task_id>.json
 
 1. 規則保存必填 `target_branch`，trigger 將其帶入一般任務。
 2. 目標專案在 Task 專屬 worktree 完成初始工作，共用 `project_path` 不留修改；任務進入 `done`，Dashboard 顯示待驗收。
-3. 使用者按「驗收」。若瀏覽器尚無姓名，先設定並保存；之後每項任務只需按一次。
-4. `POST /api/tasks/:id/approve` 驗證：安全 ID、任務位於 `done`、型別是 `skill-dispatch`、具備 `project_path` 與 `target_branch`、姓名合法。
+3. 使用者按「驗收」。若瀏覽器尚無公司 ID，先設定並保存；之後每項任務只需按一次。
+4. `POST /api/tasks/:id/approve` 驗證：安全 ID、任務位於 `done`、型別是 `skill-dispatch`、具備 `project_path` 與 `target_branch`、公司 ID 符合兩段英文字母以一個 `.` 分隔。
 5. Server 以排他建立方式寫入 approval pending event；既有事件不覆寫。
 6. Worker 搬移事件到 processing，透過既有 `src/codexRunner.js` 回到 `workspace_path` 執行 Codex。
 7. Prompt 通知專案依自身 AGENTS.md、instructions 與 skills 執行核准後流程，包含四個核准欄位，要求 commit、push 到 `target_branch`，且 commit message 加入：
@@ -89,6 +89,6 @@ queue/approvals/unknown/<task_id>.json
 - approval queue 原子建立、狀態搬移、失敗重試與 processing 回收。
 - 同專案兩個 Task worktree 與共用工作目錄既有 dirty change 不得互相混入；真實 Codex smoke 驗證 commit、push、trailers 與重送冪等。
 - 通知 prompt 完整包含四欄、commit／push 指示與兩個 trailer。
-- Dashboard 顯示保存的姓名、核准資料與發布狀態。
+- Dashboard 顯示保存的公司 ID、核准資料與發布狀態。
 - 靜態防退化測試確認 element-bot source 沒有直接執行 Git，且 agent CLI 仍只由 `src/codexRunner.js` 啟動。
 - 完成前執行 `npm test`、`git diff --check` 與真實隔離專案 smoke test。

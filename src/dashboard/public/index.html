@@ -54,7 +54,8 @@
 <header>
   <span class="dot" id="botStatus">…</span>
   <span class="counts" id="counts"></span>
-  <label class="muted" style="margin-left:auto">驗收人 <input id="approverName" type="text" maxlength="100" placeholder="請輸入姓名" style="width:120px;background:#0f1115;color:#e6e6e6;border:1px solid #30363d;border-radius:6px;padding:4px 6px" /></label>
+  <span class="muted" style="margin-left:auto">驗收人：<span id="approverDisplay" style="font-family:monospace">尚未設定</span></span>
+  <button id="changeApprover" class="abtn" type="button">設定</button>
   <button id="roomsBtn" class="abtn">🏠 監聽房間</button>
   <button id="notifyBtn" class="abtn">🔔 通知設定</button>
   <a href="/rules.html" class="abtn" style="text-decoration:none">⚙ 規則設定</a>
@@ -130,11 +131,37 @@
 <script>
 const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", publishing: "提交中", publish_failed: "發布失敗", publish_unknown: "發布結果未知", published: "已發布", done: "完成", failed: "失敗", blocked: "受阻", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
 const APPROVER_KEY = "element-bot.approved-by";
-const approverInput = document.getElementById("approverName");
-try { approverInput.value = localStorage.getItem(APPROVER_KEY) || ""; } catch (_) {}
-approverInput.addEventListener("input", () => {
-  try { localStorage.setItem(APPROVER_KEY, approverInput.value.trim()); } catch (_) {}
-});
+const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
+const approverDisplay = document.getElementById("approverDisplay");
+const changeApprover = document.getElementById("changeApprover");
+let savedApprover = "";
+try { savedApprover = (localStorage.getItem(APPROVER_KEY) || "").trim(); } catch (_) {}
+if (!COMPANY_ID_PATTERN.test(savedApprover)) {
+  savedApprover = "";
+  try { localStorage.removeItem(APPROVER_KEY); } catch (_) {}
+}
+
+function renderApprover() {
+  approverDisplay.textContent = savedApprover || "尚未設定";
+  changeApprover.textContent = savedApprover ? "更換" : "設定";
+}
+
+function promptForApprover() {
+  const entered = prompt("請輸入公司 ID（例如 patrick.zyx）", savedApprover);
+  if (entered === null) return null;
+  const companyId = entered.trim();
+  if (!COMPANY_ID_PATTERN.test(companyId)) {
+    alert("公司 ID 格式不正確，請輸入例如 patrick.zyx");
+    return null;
+  }
+  savedApprover = companyId;
+  try { localStorage.setItem(APPROVER_KEY, savedApprover); } catch (_) {}
+  renderApprover();
+  return savedApprover;
+}
+
+changeApprover.addEventListener("click", promptForApprover);
+renderApprover();
 let selectedId = null;
 let lastTasks = [];
 // 詳情面板上次渲染的任務與 HTML,用來判斷這次輪詢要不要真的重建 DOM。
@@ -340,8 +367,8 @@ async function renderDetail() {
 
 async function doAction(act) {
   if (act === "approve") {
-    const approvedBy = approverInput.value.trim();
-    if (!approvedBy) { alert("請先輸入驗收人姓名"); approverInput.focus(); return; }
+    const approvedBy = savedApprover || promptForApprover();
+    if (!approvedBy) return;
     const response = await fetch(`/api/tasks/${encodeURIComponent(selectedId)}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

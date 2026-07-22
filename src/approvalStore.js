@@ -4,6 +4,7 @@ const path = require("path");
 const { ensureDir, writeJsonAtomic } = require("./fsUtils");
 
 const APPROVAL_STATUSES = ["pending", "processing", "done", "failed", "unknown"];
+const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
 
 function safeId(id) {
   return typeof id === "string" && id.length > 0 && id.length <= 240 &&
@@ -72,9 +73,8 @@ function validateInput(taskId, task, approvedBy) {
       task.target_branch.length > 255 || /[\u0000-\u001f\u007f]/.test(task.target_branch)) {
     throw new Error("approval 缺少或含不合法 target_branch");
   }
-  if (typeof approvedBy !== "string" || !approvedBy.trim() || approvedBy.trim().length > 100 ||
-      /[\u0000-\u001f\u007f]/.test(approvedBy)) {
-    throw new Error("驗收人姓名不合法");
+  if (typeof approvedBy !== "string" || !COMPANY_ID_PATTERN.test(approvedBy.trim())) {
+    throw new Error("公司 ID 格式不合法（例如 patrick.zyx）");
   }
 }
 

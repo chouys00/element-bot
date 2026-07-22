@@ -60,7 +60,14 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     !htmlText.includes('data-act="open"') &&
     !htmlText.includes("/open"));
   ok("dashboard 提供驗收連結區塊", htmlText.includes("驗收連結") && !htmlText.includes("相關連結"));
-  ok("dashboard 保存可信內網驗收人", htmlText.includes("element-bot.approved-by") && htmlText.includes('id="approverName"'));
+  ok("dashboard 保存可信內網公司 ID", htmlText.includes("element-bot.approved-by") && htmlText.includes('id="approverDisplay"'));
+  ok("dashboard 公司 ID 唯讀顯示且可更換",
+    htmlText.includes('id="changeApprover"') &&
+    !htmlText.includes('id="approverName"'));
+  ok("dashboard 首次驗收才提示公司 ID 與範例",
+    htmlText.includes("請輸入公司 ID（例如 patrick.zyx）") &&
+    htmlText.includes("^[A-Za-z]+\\.[A-Za-z]+$") &&
+    htmlText.includes("prompt("));
   ok("dashboard 使用 approve API", htmlText.includes("/approve") && !htmlText.includes("/verify"));
   ok("dashboard 顯示發布狀態", htmlText.includes('publishing: "提交中"') && htmlText.includes('publish_failed: "發布失敗"'));
   ok("dashboard 區分已發布與結果未知", htmlText.includes('published: "已發布"') && htmlText.includes('publish_unknown: "發布結果未知"'));
@@ -111,12 +118,12 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const approved = await fetch(`${base}/api/tasks/v1/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ approved_by: "王小明", target_branch: "evil", approved_at: "2000-01-01" }),
+    body: JSON.stringify({ approved_by: "  patrick.zyx  ", target_branch: "evil", approved_at: "2000-01-01" }),
   });
   ok("首次 approve 回 201", approved.status === 201);
   const approvalFile = path.join(queueDir, "approvals", "pending", "v1.json");
   const approval = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
-  ok("approval 保存登入替代署名", approval.approved_by === "王小明");
+  ok("approval 保存公司 ID 並去除前後空白", approval.approved_by === "patrick.zyx");
   ok("approval 分支取自任務而非 request", approval.target_branch === "main");
   ok("approval 帶完整 task_id 與專案路徑", approval.task_id === "v1" && approval.project_path === root);
   ok("approval 綁定 Task 專屬 worktree", approval.workspace_path === v1Workspace);
@@ -124,22 +131,31 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 
   const duplicate = await fetch(`${base}/api/tasks/v1/approve`, {
     method: "POST",
-    body: JSON.stringify({ approved_by: "另一人" }),
+    body: JSON.stringify({ approved_by: "jane.doe" }),
   });
   ok("重複 approve 回既有事件", duplicate.status === 200);
   const approvalAgain = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
   ok("重複 approve 不覆寫人員或時間", approvalAgain.approved_by === approval.approved_by && approvalAgain.approved_at === approval.approved_at);
 
-  const approveUnknown = await fetch(`${base}/api/tasks/ghost/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  for (const invalidId of ["", "patrick", "patrick.zyx.extra", "patrick.123", "王小明"]) {
+    const invalidApproval = await fetch(`${base}/api/tasks/v1/approve`, {
+      method: "POST",
+      body: JSON.stringify({ approved_by: invalidId }),
+    });
+    ok(`公司 ID 格式錯誤會被拒絕：${invalidId || "空值"}`, invalidApproval.status === 400);
+    ok("公司 ID 格式錯誤有明確提示", (await invalidApproval.text()).includes("公司 ID"));
+  }
+
+  const approveUnknown = await fetch(`${base}/api/tasks/ghost/approve`, { method: "POST", body: JSON.stringify({ approved_by: "patrick.zyx" }) });
   ok("approve 無此任務 → 404", approveUnknown.status === 404);
   fs.writeFileSync(path.join(queueDir, "pending", "p1.json"), JSON.stringify({ task: "skill-dispatch", project_path: root, target_branch: "main" }), "utf8");
-  const approvePending = await fetch(`${base}/api/tasks/p1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  const approvePending = await fetch(`${base}/api/tasks/p1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "patrick.zyx" }) });
   ok("非 done 任務不能 approve", approvePending.status === 409);
   fs.writeFileSync(path.join(queueDir, "done", "n1.json"), JSON.stringify({ task: "other", project_path: root, target_branch: "main" }), "utf8");
-  const approveOther = await fetch(`${base}/api/tasks/n1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  const approveOther = await fetch(`${base}/api/tasks/n1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "patrick.zyx" }) });
   ok("非 skill-dispatch 不能 approve", approveOther.status === 400);
   fs.writeFileSync(path.join(queueDir, "done", "m1.json"), JSON.stringify({ task: "skill-dispatch", project_path: root }), "utf8");
-  const approveMissingBranch = await fetch(`${base}/api/tasks/m1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "王小明" }) });
+  const approveMissingBranch = await fetch(`${base}/api/tasks/m1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "patrick.zyx" }) });
   ok("缺 target_branch 不能 approve", approveMissingBranch.status === 400);
   const approveNoName = await fetch(`${base}/api/tasks/v1/approve`, { method: "POST", body: JSON.stringify({ approved_by: "" }) });
   ok("空驗收人不能 approve", approveNoName.status === 400);
