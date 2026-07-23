@@ -2,7 +2,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS } = require("./aggregate");
+const { collectTasks, statusCounts, taskDisplayStatus, resolveTaskLog, readMessagesTail, parseProgress, STATUS_DIRS } = require("./aggregate");
 const { readRoomsMap, translateRoom } = require("../roomsSidecar");
 const { readHeartbeat, isFresh } = require("../heartbeat");
 const { taskNames } = require("../taskDefs");
@@ -15,6 +15,7 @@ const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 const { ensureDir } = require("../fsUtils");
 const { createApproval, retryApproval } = require("../approvalStore");
+const { createClosure, findClosure, reopenClosure } = require("../taskClosureStore");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -139,10 +140,38 @@ function createServer(deps) {
             return sendJson(res, 200, { error: String((e && e.message) || e), project_check: chk });
           }
         }
-        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve|publish-retry)$/);
+        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve|publish-retry|close|reopen)$/);
         if (m) {
           const id = decodeURIComponent(m[1]);
           if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
+          if (m[2] === "close" || m[2] === "reopen") {
+            const task = collectTasks(queueDir, {}, undefined).find((item) => item.id === id);
+            if (!task) { res.writeHead(404); return res.end("no such task"); }
+            if (m[2] === "reopen") {
+              try { return sendJson(res, 200, { ok: true, reopened: reopenClosure(queueDir, id) }); }
+              catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
+            }
+
+            let raw;
+            try { raw = await readBody(req, 4096); } catch (_) { res.writeHead(413); return res.end("body too large"); }
+            let body;
+            try { body = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+            let existing = null;
+            try { existing = findClosure(queueDir, id); }
+            catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
+            const closeableStatuses = new Set(["review", "failed", "blocked", "publish_failed", "publish_unknown"]);
+            if (!existing && !closeableStatuses.has(taskDisplayStatus(task))) {
+              res.writeHead(409);
+              return res.end("task status cannot be closed");
+            }
+            try {
+              const closure = createClosure(queueDir, id, body && body.closed_by);
+              return sendJson(res, closure.created ? 201 : 200, { ok: true, ...closure });
+            } catch (error) {
+              res.writeHead(400);
+              return res.end(String((error && error.message) || error));
+            }
+          }
           if (m[2] === "requeue") {
             const sourceStatus = ["failed", "blocked"].find((status) => fs.existsSync(path.join(queueDir, status, id + ".json")));
             const from = sourceStatus ? path.join(queueDir, sourceStatus, id + ".json") : "";

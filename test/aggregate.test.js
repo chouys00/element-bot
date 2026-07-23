@@ -10,7 +10,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 
 function freshRoot() {
   const d = path.join(os.tmpdir(), `agg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
-  for (const s of ["pending", "processing", "done", "failed", "blocked", "review", "logs"]) fs.mkdirSync(path.join(d, "queue", s), { recursive: true });
+  for (const s of ["pending", "processing", "done", "failed", "blocked", "review", "closed", "logs"]) fs.mkdirSync(path.join(d, "queue", s), { recursive: true });
   fs.mkdirSync(path.join(d, "output"), { recursive: true });
   return d;
 }
@@ -118,6 +118,37 @@ ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id ===
   ok("approval 狀態統計分流", approvalCounts.unverified === 1 && approvalCounts.publishing === 2 && approvalCounts.publish_failed === 1 && approvalCounts.publish_unknown === 1 && approvalCounts.published === 2);
   ok("只有未核准任務列入待驗收", approvalCounts.review === 1);
   fs.rmSync(approvalRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+}
+
+// 已關閉標記附回原任務，任務仍留在清單，但不再累計待驗收與異常。
+{
+  const closedRoot = freshRoot();
+  const closedQueue = path.join(closedRoot, "queue");
+  writeTask(closedQueue, "done", "closed-review.json", {
+    rule: "發布", task: "skill-dispatch", enqueued_at: "2026-07-22T01:00:00.000Z", source: {},
+  });
+  writeTask(closedQueue, "failed", "closed-failed.json", {
+    rule: "發布", task: "skill-dispatch", enqueued_at: "2026-07-22T02:00:00.000Z", source: {},
+  });
+  for (const id of ["closed-review", "closed-failed"]) {
+    fs.writeFileSync(path.join(closedQueue, "closed", `${id}.json`), JSON.stringify({
+      task_id: id,
+      closed_by: "patrick.zyx",
+      closed_at: "2026-07-22T03:00:00.000Z",
+    }), "utf8");
+  }
+
+  const closedTasks = collectTasks(closedQueue, {}, 100);
+  ok("已關閉任務仍保留在清單", closedTasks.length === 2);
+  ok("task API 帶關閉人員與時間",
+    closedTasks.every((task) => task.closure &&
+      task.closure.closed_by === "patrick.zyx" &&
+      task.closure.closed_at === "2026-07-22T03:00:00.000Z"));
+
+  const closedCounts = statusCounts(closedQueue);
+  ok("已關閉任務不列入待驗收與異常", closedCounts.review === 0 && closedCounts.failed === 0);
+  ok("已關閉任務另行統計", closedCounts.closed === 2);
+  fs.rmSync(closedRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
 }
 
 writeTask(queueDir, "blocked", "blk.json", { rule: "禪道", task: "skill-dispatch", enqueued_at: "2026-06-26T02:40:00.000Z", source: {} });

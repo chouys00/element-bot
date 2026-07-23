@@ -97,6 +97,18 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("dashboard 顯示發布狀態", htmlText.includes('publishing: "提交中"') && htmlText.includes('publish_failed: "發布失敗"'));
   ok("dashboard 區分已發布與結果未知", htmlText.includes('published: "已發布"') && htmlText.includes('publish_unknown: "發布結果未知"'));
   ok("dashboard 顯示發布診斷並只允許完整事件重試", htmlText.includes("last_error") && htmlText.includes("approval.attempt") && htmlText.includes("publish-retry") && htmlText.includes("!t.approval.malformed"));
+  ok("dashboard 顯示已關閉狀態與關閉資訊",
+    htmlText.includes('closed: "已關閉"') &&
+    htmlText.includes("t.closure.closed_by") &&
+    htmlText.includes("t.closure.closed_at"));
+  ok("dashboard 提供關閉與重新開啟按鈕",
+    htmlText.includes('data-act="close"') &&
+    htmlText.includes("設為已關閉") &&
+    htmlText.includes('data-act="reopen"') &&
+    htmlText.includes("重新開啟"));
+  ok("dashboard 關閉時沿用 localStorage 操作者",
+    htmlText.includes("body: JSON.stringify({ closed_by: closedBy })") &&
+    htmlText.includes("/${act}`"));
   ok("dashboard 不保留 legacy 顯示分支",
     !htmlText.includes("legacySumHtml") &&
     !htmlText.includes("const isGeneric") &&
@@ -133,6 +145,83 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("blocked 任務可重跑", blockedRequeue.status === 200 && fs.existsSync(path.join(queueDir, "pending", "r2.json")));
   ok("failed/ 任務已無", !fs.existsSync(path.join(queueDir, "failed", "r1.json")));
   ok("error.txt 已清", !fs.existsSync(path.join(queueDir, "failed", "r1.json.error.txt")));
+
+  // POST close/reopen：獨立標記，不搬動原任務；只接受待驗收與異常。
+  fs.writeFileSync(path.join(queueDir, "done", "close-review.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  const closeReview = await fetch(`${base}/api/tasks/close-review/close`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ closed_by: "  patrick.zyx  ", closed_at: "2000-01-01" }),
+  });
+  ok("待驗收任務可設為已關閉", closeReview.status === 201);
+  const closureFile = path.join(queueDir, "closed", "close-review.json");
+  const closure = JSON.parse(fs.readFileSync(closureFile, "utf8"));
+  ok("關閉標記保存公司 ID 並去除前後空白", closure.closed_by === "patrick.zyx");
+  ok("關閉時間由 server 產生", closure.closed_at !== "2000-01-01" && Number.isFinite(Date.parse(closure.closed_at)));
+  ok("關閉不搬動原任務", fs.existsSync(path.join(queueDir, "done", "close-review.json")));
+
+  const closedTasks = await (await fetch(`${base}/api/tasks`)).json();
+  ok("task API 帶關閉人員與時間",
+    closedTasks.find((task) => task.id === "close-review").closure.closed_by === "patrick.zyx");
+  const closedStatus = await (await fetch(`${base}/api/status`)).json();
+  ok("關閉後不再累計待驗收", closedStatus.counts.review === 1 && closedStatus.counts.closed === 1);
+
+  const duplicateClose = await fetch(`${base}/api/tasks/close-review/close`, {
+    method: "POST",
+    body: JSON.stringify({ closed_by: "jane.doe" }),
+  });
+  ok("重複關閉回既有標記", duplicateClose.status === 200);
+  const closureAgain = JSON.parse(fs.readFileSync(closureFile, "utf8"));
+  ok("重複關閉不覆寫人員或時間",
+    closureAgain.closed_by === closure.closed_by && closureAgain.closed_at === closure.closed_at);
+
+  const reopen = await fetch(`${base}/api/tasks/close-review/reopen`, { method: "POST" });
+  ok("已關閉任務可重新開啟", reopen.status === 200 && !fs.existsSync(closureFile));
+  const reopenedTasks = await (await fetch(`${base}/api/tasks`)).json();
+  ok("重新開啟後恢復原狀態", !reopenedTasks.find((task) => task.id === "close-review").closure);
+  const duplicateReopen = await fetch(`${base}/api/tasks/close-review/reopen`, { method: "POST" });
+  ok("重複重新開啟保持成功", duplicateReopen.status === 200);
+
+  fs.writeFileSync(path.join(queueDir, "failed", "close-failed.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  const closeFailed = await fetch(`${base}/api/tasks/close-failed/close`, {
+    method: "POST", body: JSON.stringify({ closed_by: "patrick.zyx" }),
+  });
+  ok("失敗任務可設為已關閉", closeFailed.status === 201);
+  fs.writeFileSync(path.join(queueDir, "blocked", "close-blocked.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  const closeBlocked = await fetch(`${base}/api/tasks/close-blocked/close`, {
+    method: "POST", body: JSON.stringify({ closed_by: "patrick.zyx" }),
+  });
+  ok("受阻任務可設為已關閉", closeBlocked.status === 201);
+
+  for (const statusName of ["failed", "unknown"]) {
+    const id = `close-publish-${statusName}`;
+    fs.writeFileSync(path.join(queueDir, "done", `${id}.json`), JSON.stringify({ rule: "x", task: "skill-dispatch" }), "utf8");
+    fs.mkdirSync(path.join(queueDir, "approvals", statusName), { recursive: true });
+    fs.writeFileSync(path.join(queueDir, "approvals", statusName, `${id}.json`), JSON.stringify({
+      task_id: id, approved_by: "patrick.zyx", approved_at: "2026-07-22T01:00:00.000Z",
+    }), "utf8");
+    const response = await fetch(`${base}/api/tasks/${id}/close`, {
+      method: "POST", body: JSON.stringify({ closed_by: "patrick.zyx" }),
+    });
+    ok(`發布${statusName === "failed" ? "失敗" : "結果未知"}任務可設為已關閉`, response.status === 201);
+  }
+
+  fs.writeFileSync(path.join(queueDir, "pending", "cannot-close.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  const closePending = await fetch(`${base}/api/tasks/cannot-close/close`, {
+    method: "POST", body: JSON.stringify({ closed_by: "patrick.zyx" }),
+  });
+  ok("進行中的任務不可關閉", closePending.status === 409);
+  fs.writeFileSync(path.join(queueDir, "failed", "bad-closer.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  const invalidCloser = await fetch(`${base}/api/tasks/bad-closer/close`, {
+    method: "POST", body: JSON.stringify({ closed_by: "patrick" }),
+  });
+  ok("關閉操作者格式錯誤會被拒絕", invalidCloser.status === 400 && (await invalidCloser.text()).includes("公司 ID"));
+  const closeUnknown = await fetch(`${base}/api/tasks/ghost/close`, {
+    method: "POST", body: JSON.stringify({ closed_by: "patrick.zyx" }),
+  });
+  ok("關閉不存在任務回 404", closeUnknown.status === 404);
+  const reopenUnknown = await fetch(`${base}/api/tasks/ghost/reopen`, { method: "POST" });
+  ok("重新開啟不存在任務回 404", reopenUnknown.status === 404);
 
   // POST approve:只接受驗收人，其他欄位一律取既有 done task 與 server 時間。
   fs.writeFileSync(path.join(queueDir, "done", "v1.json"), JSON.stringify({

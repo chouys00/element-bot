@@ -5,6 +5,7 @@ const { translateRoom } = require("../roomsSidecar");
 const { extractAcceptanceLinks } = require("../links");
 const { formatTaskNumber } = require("../taskNumber");
 const { findApproval } = require("../approvalStore");
+const { findClosure } = require("../taskClosureStore");
 
 // judging/judged 為 LLM 判斷紀錄(見 judgeStatus.js):judging=判斷中,judged=判定不觸發/判斷失敗。
 // 一併列進任務清單,使用者才分得清「沒收到 vs 判斷中 vs LLM 拒絕 vs 判斷失敗」。
@@ -38,6 +39,9 @@ function collectTasks(queueDir, roomsMap, limit) {
       catch (error) {
         approval = { status: "unknown", event: { task_id: id, outcome_unknown: true, last_error: String((error && error.message) || error) } };
       }
+      let closure = null;
+      try { closure = findClosure(queueDir, id); }
+      catch (_) {}
       out.push({
         id,
         task_number: formatTaskNumber(id),
@@ -52,6 +56,7 @@ function collectTasks(queueDir, roomsMap, limit) {
         enqueued_at: task.enqueued_at,
         verified: isVerified(queueDir, id) || !!(approval && approval.status === "done"),
         ...(approval ? { approval: { status: approval.status, ...approval.event } } : {}),
+        ...(closure ? { closure } : {}),
         ...(task.judge ? { judge: task.judge } : {}),
         // skill-dispatch(通用「計程車」任務)專用:任務清單只顯示得到 task === "skill-dispatch",
         // 分不出送去哪個專案、送了什麼指令,故把規則存進 task 的這兩欄一併帶出供 dashboard 顯示。
@@ -69,16 +74,31 @@ function collectTasks(queueDir, roomsMap, limit) {
 function statusCounts(queueDir) {
   const counts = {
     judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, blocked: 0, review: 0,
-    unverified: 0, publishing: 0, publish_failed: 0, publish_unknown: 0, published: 0,
+    unverified: 0, publishing: 0, publish_failed: 0, publish_unknown: 0, published: 0, closed: 0,
   };
   let unverifiedDone = 0;
   for (const status of STATUS_DIRS) {
     try {
       const files = fs.readdirSync(path.join(queueDir, status)).filter((f) => f.endsWith(".json"));
-      counts[status] = files.length;
+      counts[status] = 0;
+      for (const file of files) {
+        const id = file.replace(/\.json$/, "");
+        let closure = null;
+        try { closure = findClosure(queueDir, id); }
+        catch (_) {}
+        if (closure) {
+          counts.closed++;
+          continue;
+        }
+        counts[status]++;
+      }
       if (status === "done") {
         for (const file of files) {
           const id = file.replace(/\.json$/, "");
+          let closure = null;
+          try { closure = findClosure(queueDir, id); }
+          catch (_) {}
+          if (closure) continue;
           let approval = null;
           try { approval = findApproval(queueDir, id); }
           catch (_) { counts.publish_unknown++; continue; }
@@ -94,6 +114,19 @@ function statusCounts(queueDir) {
   counts.unverified = unverifiedDone;
   counts.review += unverifiedDone;
   return counts;
+}
+
+function taskDisplayStatus(task) {
+  if (task.closure) return "closed";
+  if (task.status === "done") {
+    if (task.approval && ["pending", "processing"].includes(task.approval.status)) return "publishing";
+    if (task.approval && task.approval.status === "failed") return "publish_failed";
+    if (task.approval && task.approval.status === "unknown") return "publish_unknown";
+    if (task.approval && task.approval.status === "done") return "published";
+    return task.verified ? "done" : "review";
+  }
+  if (task.status === "judged") return task.judge && task.judge.status === "error" ? "judge_error" : "rejected";
+  return task.status;
 }
 
 // 解析任務日誌:logs/<id>.log 優先,其次 failed/<id>.json.error.txt,都沒有則占位。
@@ -165,4 +198,13 @@ function isVerified(queueDir, id) {
   return fs.existsSync(path.join(queueDir, "work", id, "verified.json"));
 }
 
-module.exports = { collectTasks, statusCounts, resolveTaskLog, readMessagesTail, parseProgress, isVerified, STATUS_DIRS };
+module.exports = {
+  collectTasks,
+  statusCounts,
+  taskDisplayStatus,
+  resolveTaskLog,
+  readMessagesTail,
+  parseProgress,
+  isVerified,
+  STATUS_DIRS,
+};
