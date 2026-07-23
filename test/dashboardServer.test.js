@@ -4,11 +4,21 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createServer } = require("../src/dashboard/server");
+const { loadDashboardConfig } = require("../src/config");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
 
 (async () => {
+  const originalMatrixUserId = process.env.MATRIX_USER_ID;
+  process.env.MATRIX_USER_ID = "@configured_bot:ims.opscloud.info";
+  const dashboardConfig = loadDashboardConfig();
+  if (originalMatrixUserId === undefined) delete process.env.MATRIX_USER_ID;
+  else process.env.MATRIX_USER_ID = originalMatrixUserId;
+  ok("dashboard config 帶入 Matrix 帳號", dashboardConfig.matrixUserId === "@configured_bot:ims.opscloud.info");
+  const dashboardIndexSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard", "index.js"), "utf8");
+  ok("dashboard 啟動時把 Matrix 帳號傳給 server", dashboardIndexSource.includes("matrixUserId: config.matrixUserId"));
+
   const root = path.join(os.tmpdir(), `dash-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
   const queueDir = path.join(root, "queue");
   const storageDir = path.join(root, "storage");
@@ -27,7 +37,12 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
 
   // 假 judge:body 含「觸發」→ trigger true 並抽出固定連結,否則 trigger false。供 /api/rules/judge 測試,不打真 Codex。
   const fakeJudge = async (_rule, body) => ({ trigger: String(body).includes("觸發"), params: { 連結: "https://example.com/x" } });
-  const server = createServer({ queueDir, storageDir, outputFile, rulesPath, envRoomIds: ["!env:s"], judgeFn: fakeJudge });
+  const server = createServer({
+    queueDir, storageDir, outputFile, rulesPath,
+    envRoomIds: ["!env:s"],
+    matrixUserId: "@fe_bot:ims.opscloud.info",
+    judgeFn: fakeJudge,
+  });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
@@ -39,6 +54,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const status = await (await fetch(`${base}/api/status`)).json();
   ok("bot 線上", status.bot_online === true);
   ok("done 計數 1", status.counts.done === 1);
+  ok("status 回傳 Matrix 帳號名稱", status.matrix_account_name === "fe_bot");
 
   const msgs = await (await fetch(`${base}/api/messages`)).json();
   ok("messages 一筆", msgs.length === 1 && msgs[0].body === "hello");
@@ -64,6 +80,15 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("dashboard 公司 ID 唯讀顯示且可更換",
     htmlText.includes('id="changeApprover"') &&
     !htmlText.includes('id="approverName"'));
+  ok("dashboard 顯示 Matrix 帳號與操作者",
+    htmlText.includes('id="matrixAccount"') &&
+    htmlText.includes("操作者：") &&
+    !htmlText.includes("驗收人："));
+  ok("dashboard Header 使用三項摘要",
+    htmlText.includes("執行中") &&
+    htmlText.includes("待驗收") &&
+    htmlText.includes("異常") &&
+    !htmlText.includes("<span>LLM 判斷中"));
   ok("dashboard 首次驗收才提示公司 ID 與範例",
     htmlText.includes("請輸入公司 ID（例如 patrick.zyx）") &&
     htmlText.includes("^[A-Za-z]+\\.[A-Za-z]+$") &&

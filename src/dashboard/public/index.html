@@ -15,7 +15,10 @@
   body { font-family: system-ui, "Microsoft JhengHei", sans-serif; background: #16181d; color: #e6e6e6; font-size: 14px; }
   header { flex-shrink: 0; padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2c2f38; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
   header .dot { font-weight: bold; }
-  header .counts span { margin-right: 10px; color: #aaa; }
+  header .counts { display: flex; gap: 7px; flex-wrap: wrap; }
+  header .counts span { color: #c8ced8; background: #252932; border: 1px solid #343a45; border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
+  header .counts .warn { border-color: #6e5a2d; color: #e6c36a; }
+  header .counts .bad { border-color: #713b43; color: #ff9d96; }
   main { flex: 1; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; }
   .dev { flex-shrink: 0; border: 1px dashed #555; border-radius: 8px; padding: 10px; }
   .dev summary { cursor: pointer; color: #bbb; }
@@ -53,8 +56,9 @@
 <body>
 <header>
   <span class="dot" id="botStatus">…</span>
+  <span class="muted">Matrix：<span id="matrixAccount" style="font-family:monospace">—</span></span>
   <span class="counts" id="counts"></span>
-  <span class="muted" style="margin-left:auto">驗收人：<span id="approverDisplay" style="font-family:monospace">尚未設定</span></span>
+  <span class="muted" style="margin-left:auto">操作者：<span id="approverDisplay" style="font-family:monospace">尚未設定</span></span>
   <button id="changeApprover" class="abtn" type="button">設定</button>
   <button id="roomsBtn" class="abtn">🏠 監聽房間</button>
   <button id="notifyBtn" class="abtn">🔔 通知設定</button>
@@ -220,11 +224,13 @@ async function refresh() {
 
 function renderStatus(s) {
   document.getElementById("botStatus").textContent = s.bot_online ? "🟢 bot 連線中" : "🔴 bot 離線";
+  document.getElementById("matrixAccount").textContent = s.matrix_account_name || "未設定";
   const c = s.counts || {};
+  const active = (c.judging || 0) + (c.pending || 0) + (c.processing || 0) + (c.publishing || 0);
   const review = c.review || 0;
-  const finished = c.published || 0;
+  const issues = (c.blocked || 0) + (c.failed || 0) + (c.publish_failed || 0) + (c.publish_unknown || 0);
   document.getElementById("counts").innerHTML =
-    `<span>LLM 判斷中 ${c.judging || 0}</span><span>待處理 ${c.pending || 0}</span><span>進行中 ${c.processing || 0}</span><span>受阻 ${c.blocked || 0}</span><span>待驗收 ${review}</span><span>提交中 ${c.publishing || 0}</span><span>發布失敗 ${c.publish_failed || 0}</span><span>發布結果未知 ${c.publish_unknown || 0}</span><span>已發布 ${finished}</span><span>失敗 ${c.failed || 0}</span>`;
+    `<span>執行中 ${active}</span><span class="warn">待驗收 ${review}</span><span class="bad">異常 ${issues}</span>`;
 }
 
 function renderMsgs(msgs) {

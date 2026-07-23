@@ -46,6 +46,7 @@ function loadDashboardConfig() {
     dashboardHost: process.env.DASHBOARD_HOST || "127.0.0.1",
     // 監聽清單後備:rooms-config.json 不存在時,dashboard 顯示 .env 的初始監聽房間。
     envRoomIds: parseRoomIds(process.env.MATRIX_ROOM_IDS),
+    matrixUserId: process.env.MATRIX_USER_ID || "",
   };
 }
 

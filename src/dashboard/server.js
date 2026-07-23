@@ -21,6 +21,12 @@ const HEARTBEAT_MAX_AGE_MS = 60000;
 const TASKS_LIMIT = 100;
 const MESSAGES_LIMIT = 50;
 
+function matrixAccountName(userId) {
+  const raw = String(userId || "").trim();
+  const match = raw.match(/^@?([^:]+)(?::.*)?$/);
+  return match ? match[1] : "";
+}
+
 function sendJson(res, code, obj) {
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(obj));
@@ -57,10 +63,15 @@ function readBody(req, limit = 1024 * 1024) {
 
 const CONTENT_TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
 
-// deps = { queueDir, storageDir, outputFile, rulesPath, envRoomIds, judgeFn }
+// deps = { queueDir, storageDir, outputFile, rulesPath, envRoomIds, matrixUserId, judgeFn }
 // judgeFn 可注入以利測試(預設用真 judge,會呼叫 Codex CLI)。
 function createServer(deps) {
-  const { queueDir, storageDir, outputFile, rulesPath, envRoomIds = [], judgeFn = (r, b) => judge(r, b) } = deps;
+  const {
+    queueDir, storageDir, outputFile, rulesPath,
+    envRoomIds = [],
+    matrixUserId = "",
+    judgeFn = (r, b) => judge(r, b),
+  } = deps;
   return http.createServer(async (req, res) => {
     const p = new URL(req.url, "http://localhost").pathname;
     try {
@@ -259,6 +270,7 @@ function createServer(deps) {
         return sendJson(res, 200, {
           bot_online: isFresh(hb, Date.now(), HEARTBEAT_MAX_AGE_MS),
           heartbeat_ts: hb,
+          matrix_account_name: matrixAccountName(matrixUserId),
           counts: statusCounts(queueDir),
         });
       }

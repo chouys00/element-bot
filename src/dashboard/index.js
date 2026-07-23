@@ -9,6 +9,7 @@ const server = createServer({
   outputFile: config.outputFile,
   rulesPath: config.rulesPath,
   envRoomIds: config.envRoomIds,
+  matrixUserId: config.matrixUserId,
 });
 server.listen(config.dashboardPort, config.dashboardHost, () => {
   console.log(`[dashboard] 監控台已啟動 → http://${config.dashboardHost}:${config.dashboardPort}`);
