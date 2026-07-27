@@ -54,7 +54,7 @@ function collectTasks(queueDir, roomsMap, limit) {
         body: src.body,
         event_id: src.event_id,
         enqueued_at: task.enqueued_at,
-        verified: isVerified(queueDir, id) || !!(approval && approval.status === "done"),
+        verified: isVerified(queueDir, id) || !!approval,
         ...(approval ? { approval: { status: approval.status, ...approval.event } } : {}),
         ...(closure ? { closure } : {}),
         ...(task.judge ? { judge: task.judge } : {}),
@@ -74,7 +74,7 @@ function collectTasks(queueDir, roomsMap, limit) {
 function statusCounts(queueDir) {
   const counts = {
     judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, blocked: 0, review: 0,
-    unverified: 0, publishing: 0, publish_failed: 0, publish_unknown: 0, published: 0, closed: 0,
+    unverified: 0, closed: 0,
   };
   let unverifiedDone = 0;
   for (const status of STATUS_DIRS) {
@@ -99,14 +99,10 @@ function statusCounts(queueDir) {
           try { closure = findClosure(queueDir, id); }
           catch (_) {}
           if (closure) continue;
-          let approval = null;
-          try { approval = findApproval(queueDir, id); }
-          catch (_) { counts.publish_unknown++; continue; }
-          if (approval && ["pending", "processing"].includes(approval.status)) counts.publishing++;
-          else if (approval && approval.status === "failed") counts.publish_failed++;
-          else if (approval && approval.status === "unknown") counts.publish_unknown++;
-          else if ((approval && approval.status === "done") || isVerified(queueDir, id)) counts.published++;
-          else unverifiedDone++;
+          let accepted = false;
+          try { accepted = !!findApproval(queueDir, id); }
+          catch (_) { accepted = true; }
+          if (!accepted && !isVerified(queueDir, id)) unverifiedDone++;
         }
       }
     } catch (_) {}
@@ -119,10 +115,7 @@ function statusCounts(queueDir) {
 function taskDisplayStatus(task) {
   if (task.closure) return "closed";
   if (task.status === "done") {
-    if (task.approval && ["pending", "processing"].includes(task.approval.status)) return "publishing";
-    if (task.approval && task.approval.status === "failed") return "publish_failed";
-    if (task.approval && task.approval.status === "unknown") return "publish_unknown";
-    if (task.approval && task.approval.status === "done") return "published";
+    if (task.approval) return "done";
     return task.verified ? "done" : "review";
   }
   if (task.status === "judged") return task.judge && task.judge.status === "error" ? "judge_error" : "rejected";

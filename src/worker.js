@@ -1,6 +1,7 @@
 "use strict";
 const { loadConfig } = require("./config");
 const { pollOnce, recoverProcessing } = require("./workerCore");
+const { checkProjectGit } = require("./projectGitGate");
 const { agentExecutor } = require("./executors/agentExecutor");
 const { writeNotifyFile } = require("./notify");
 const { approvalExecutor } = require("./executors/approvalExecutor");
@@ -9,28 +10,30 @@ const { pollApprovals, recoverApprovals } = require("./approvalWorker");
 async function main() {
   const config = loadConfig();
   const logger = console;
-  // 任務結束寫通知檔到 queue/notify/,由 bot 監看發送(worker 沒有 Matrix client)。
   const notify = (info) => writeNotifyFile(info);
-  const deps = { queueDir: config.queueDir, executor: agentExecutor, logger, notify };
+  const deps = {
+    queueDir: config.queueDir,
+    executor: agentExecutor,
+    preflight: checkProjectGit,
+    logger,
+    notify,
+  };
   const approvalDeps = {
     queueDir: config.queueDir,
     executor: approvalExecutor,
     logger,
-    maxAttempts: config.maxApprovalAttempts,
   };
 
-  logger.log(`[worker] 啟動,監看 ${config.queueDir}/pending,每 ${config.pollIntervalMs}ms 掃描一次`);
+  logger.log(`[worker] 已啟動，監看 ${config.queueDir}/pending，每 ${config.pollIntervalMs}ms 處理一筆`);
   recoverProcessing(config.queueDir, logger, config.maxTaskAttempts);
-  recoverApprovals(config.queueDir, logger, config.maxApprovalAttempts);
+  recoverApprovals(config.queueDir, logger);
 
-  // 自排程 loop(非 setInterval):確保上一輪 pollOnce 完成後才排下一輪,
-  // 避免未來換成較慢的真實 executor 時發生重入。
   const loop = async () => {
     try {
       await pollOnce(deps);
       await pollApprovals(approvalDeps);
-    } catch (err) {
-      logger.error("[worker] 掃描錯誤:", err.message);
+    } catch (error) {
+      logger.error("[worker] 輪詢錯誤:", error.message);
     }
     setTimeout(loop, config.pollIntervalMs);
   };
@@ -38,7 +41,7 @@ async function main() {
   loop();
 }
 
-main().catch((err) => {
-  console.error("[worker] 啟動失敗:", err);
+main().catch((error) => {
+  console.error("[worker] 啟動失敗:", error);
   process.exit(1);
 });

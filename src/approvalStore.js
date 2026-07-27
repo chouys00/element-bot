@@ -5,6 +5,7 @@ const { ensureDir, writeJsonAtomic } = require("./fsUtils");
 
 const APPROVAL_STATUSES = ["pending", "processing", "done", "failed", "unknown"];
 const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
+const APPROVAL_MESSAGE = "提交代碼";
 
 function safeId(id) {
   return typeof id === "string" && id.length > 0 && id.length <= 240 &&
@@ -81,16 +82,19 @@ function validateInput(taskId, task, approvedBy) {
 function validateApprovalEvent(queueDir, event, expectedTaskId) {
   if (!event || typeof event !== "object" || Array.isArray(event)) throw new Error("approval event 必須是物件");
   if (!safeId(event.task_id) || event.task_id !== expectedTaskId) throw new Error("approval event task_id 與檔名不符");
-  if (typeof event.project_path !== "string" || !event.project_path.trim() || /[\u0000-\u001f\u007f]/.test(event.project_path)) {
+  if (typeof event.project_path !== "string" || !event.project_path.trim() ||
+      /[\u0000-\u001f\u007f]/.test(event.project_path)) {
     throw new Error("approval event project_path 不合法");
   }
-  const expectedWorkspace = path.resolve(queueDir, "work", expectedTaskId, "workspace");
-  if (typeof event.workspace_path !== "string" || path.resolve(event.workspace_path) !== expectedWorkspace) {
-    throw new Error("approval event workspace_path 不是此 Task 的專屬工作區");
+  if (event.workspace_path !== undefined) {
+    const expectedWorkspace = path.resolve(queueDir, "work", expectedTaskId, "workspace");
+    if (typeof event.workspace_path !== "string" || path.resolve(event.workspace_path) !== expectedWorkspace) {
+      throw new Error("approval event workspace_path 不是此 Task 的舊版專屬工作區");
+    }
+    let workspaceStat;
+    try { workspaceStat = fs.statSync(expectedWorkspace); } catch (_) {}
+    if (!workspaceStat || !workspaceStat.isDirectory()) throw new Error("approval event workspace_path 不存在");
   }
-  let workspaceStat;
-  try { workspaceStat = fs.statSync(expectedWorkspace); } catch (_) {}
-  if (!workspaceStat || !workspaceStat.isDirectory()) throw new Error("approval event workspace_path 不存在");
   if (typeof event.target_branch !== "string" || !event.target_branch.trim() ||
       event.target_branch.length > 255 || /[\u0000-\u001f\u007f]/.test(event.target_branch)) {
     throw new Error("approval event target_branch 不合法");
@@ -101,6 +105,9 @@ function validateApprovalEvent(queueDir, event, expectedTaskId) {
   }
   if (typeof event.approved_at !== "string" || !Number.isFinite(Date.parse(event.approved_at))) {
     throw new Error("approval event approved_at 不合法");
+  }
+  if (event.message !== undefined && event.message !== APPROVAL_MESSAGE) {
+    throw new Error("approval event message 不合法");
   }
   if (!Number.isInteger(event.attempt) || event.attempt < 0) throw new Error("approval event attempt 不合法");
   if (event.retry_count !== undefined && (!Number.isInteger(event.retry_count) || event.retry_count < 0)) {
@@ -114,22 +121,22 @@ function createApproval(queueDir, taskId, task, approvedBy, nowFn = () => new Da
   const existing = findApproval(queueDir, taskId);
   if (existing) return { created: false, ...existing };
 
-  const workspacePath = path.join(queueDir, "work", taskId, "workspace");
-  let workspaceStat;
-  try { workspaceStat = fs.statSync(workspacePath); } catch (_) {}
-  if (!workspaceStat || !workspaceStat.isDirectory()) {
-    throw new Error("找不到此 Task 的專屬工作區，禁止發布共用工作目錄的變更");
-  }
-
   const event = {
     task_id: taskId,
     project_path: task.project_path,
-    workspace_path: workspacePath,
     target_branch: task.target_branch,
     approved_by: approvedBy.trim(),
     approved_at: nowFn().toISOString(),
+    message: APPROVAL_MESSAGE,
     attempt: 0,
   };
+
+  let projectStat;
+  try { projectStat = fs.statSync(path.resolve(task.project_path)); } catch (_) {}
+  if (!projectStat || !projectStat.isDirectory()) {
+    throw new Error("找不到 project_path");
+  }
+
   validateApprovalEvent(queueDir, event, taskId);
   const file = approvalPath(queueDir, "pending", taskId);
   try {
@@ -141,26 +148,6 @@ function createApproval(queueDir, taskId, task, approvedBy, nowFn = () => new Da
     if (!raced) throw error;
     return { created: false, ...raced };
   }
-}
-
-function retryApproval(queueDir, taskId) {
-  const current = findApproval(queueDir, taskId);
-  if (!current || !["failed", "unknown"].includes(current.status)) {
-    throw new Error("只有發布失敗或結果未知的 approval 可以重試");
-  }
-  if (current.event.malformed) throw new Error("損毀的 approval 事件不可直接重試");
-  validateApprovalEvent(queueDir, current.event, taskId);
-  const event = {
-    ...current.event,
-    attempt: 0,
-    retry_count: (current.event.retry_count || 0) + 1,
-  };
-  for (const key of ["last_error", "failed_at", "unknown_at", "outcome_unknown", "reconciliation_pending", "reconciliation_attempted"]) {
-    delete event[key];
-  }
-  writeApproval(queueDir, current.status, event);
-  moveApproval(queueDir, current.status, "pending", taskId);
-  return { status: "pending", event };
 }
 
 function writeApproval(queueDir, status, event) {
@@ -183,7 +170,6 @@ module.exports = {
   createApproval,
   findApproval,
   moveApproval,
-  retryApproval,
   validateApprovalEvent,
   writeApproval,
 };

@@ -52,12 +52,18 @@ function hangingChild() {
 
   const probeArgs = buildCodexArgs("probe");
   ok("probe 使用 read-only", probeArgs.includes("read-only"));
+  ok("judge 不覆寫使用者的模型設定", !judgeArgs.includes("--model"));
+  ok("probe 不覆寫使用者的模型設定", !probeArgs.includes("--model"));
+  ok("judge 不覆寫使用者的思考程度", !judgeArgs.includes('model_reasoning_effort="medium"'));
+  ok("probe 不覆寫使用者的思考程度", !probeArgs.includes('model_reasoning_effort="medium"'));
 
   const executeArgs = buildCodexArgs("execute");
   ok("execute 使用 danger-full-access", executeArgs.includes("danger-full-access"));
   ok("execute 不使用 workspace-write", !executeArgs.includes("workspace-write"));
   ok("execute 不加入 workspace-write 專用網路設定", !executeArgs.includes("sandbox_workspace_write.network_access=true"));
   ok("execute 不略過 sandbox", !executeArgs.includes("--dangerously-bypass-approvals-and-sandbox"));
+  ok("execute 固定使用 gpt-5.6-terra", executeArgs[executeArgs.indexOf("--model") + 1] === "gpt-5.6-terra");
+  ok("execute 固定使用 medium 思考程度", executeArgs.includes('model_reasoning_effort="medium"'));
 
   const oldAiTimeout = process.env.AI_TIMEOUT_MS;
   process.env.AI_TIMEOUT_MS = "1800000";

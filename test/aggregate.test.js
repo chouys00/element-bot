@@ -87,7 +87,7 @@ fs.writeFileSync(path.join(queueDir, "work", "t1", "verified.json"), "{}", "utf8
 ok("verified 反映標記檔", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t1").verified === true);
 ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t2").verified === false);
 
-// approval outbox 狀態附回原始 done task，並與 legacy verified 分開統計。
+// 一旦建立驗收通知事件，任務立即算已完成，不受通知事件內部狀態影響。
 {
   const approvalRoot = freshRoot();
   const approvalQueue = path.join(approvalRoot, "queue");
@@ -110,12 +110,13 @@ ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id ===
   const approvalTasks = collectTasks(approvalQueue, {}, 100);
   const processingApproval = approvalTasks.find((t) => t.id === "processing-approval");
   ok("task API 帶 approval 狀態與人員", processingApproval.approval.status === "processing" && processingApproval.approval.approved_by === "王小明");
-  ok("提交中尚未算發布完成", processingApproval.verified === false);
-  ok("approval done 算發布完成", approvalTasks.find((t) => t.id === "published").verified === true);
+  ok("通知尚在處理也已完成驗收", processingApproval.verified === true);
+  ok("通知失敗不回退任務完成狀態", approvalTasks.find((t) => t.id === "publish-failed").verified === true);
+  ok("既有 approval done 仍算已驗收", approvalTasks.find((t) => t.id === "published").verified === true);
   ok("legacy verified 仍相容", approvalTasks.find((t) => t.id === "legacy").verified === true);
 
   const approvalCounts = statusCounts(approvalQueue);
-  ok("approval 狀態統計分流", approvalCounts.unverified === 1 && approvalCounts.publishing === 2 && approvalCounts.publish_failed === 1 && approvalCounts.publish_unknown === 1 && approvalCounts.published === 2);
+  ok("通知狀態不再拆成發布統計", approvalCounts.unverified === 1 && !("publishing" in approvalCounts) && !("publish_failed" in approvalCounts));
   ok("只有未核准任務列入待驗收", approvalCounts.review === 1);
   fs.rmSync(approvalRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
 }

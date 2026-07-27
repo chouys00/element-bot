@@ -14,7 +14,7 @@ const { judge } = require("../judge");
 const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 const { ensureDir } = require("../fsUtils");
-const { createApproval, retryApproval } = require("../approvalStore");
+const { createApproval } = require("../approvalStore");
 const { createClosure, findClosure, reopenClosure } = require("../taskClosureStore");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -140,7 +140,7 @@ function createServer(deps) {
             return sendJson(res, 200, { error: String((e && e.message) || e), project_check: chk });
           }
         }
-        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve|publish-retry|close|reopen)$/);
+        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve|close|reopen)$/);
         if (m) {
           const id = decodeURIComponent(m[1]);
           if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
@@ -159,7 +159,7 @@ function createServer(deps) {
             let existing = null;
             try { existing = findClosure(queueDir, id); }
             catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
-            const closeableStatuses = new Set(["review", "failed", "blocked", "publish_failed", "publish_unknown"]);
+            const closeableStatuses = new Set(["review", "failed", "blocked"]);
             if (!existing && !closeableStatuses.has(taskDisplayStatus(task))) {
               res.writeHead(409);
               return res.end("task status cannot be closed");
@@ -187,10 +187,6 @@ function createServer(deps) {
             const existsElsewhere = STATUS_DIRS.some((status) => status !== "done" && fs.existsSync(path.join(queueDir, status, id + ".json")));
             res.writeHead(existsElsewhere ? 409 : 404);
             return res.end(existsElsewhere ? "task is not done" : "no such task");
-          }
-          if (m[2] === "publish-retry") {
-            try { return sendJson(res, 200, { ok: true, ...retryApproval(queueDir, id) }); }
-            catch (error) { res.writeHead(409); return res.end(String((error && error.message) || error)); }
           }
           let raw;
           try { raw = await readBody(req, 4096); } catch (_) { res.writeHead(413); return res.end("body too large"); }

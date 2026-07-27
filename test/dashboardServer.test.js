@@ -3,6 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const vm = require("vm");
 const { createServer } = require("../src/dashboard/server");
 const { loadDashboardConfig } = require("../src/config");
 
@@ -67,6 +68,13 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("根路徑回 200", html.status === 200);
   const htmlText = await html.text();
   ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
+  const durationFunctionSource = (htmlText.match(/function formatDuration\(ms\) \{[\s\S]*?\n\}/) || [])[0];
+  ok(
+    "dashboard 長耗時顯示分鐘與秒數",
+    !!durationFunctionSource &&
+      vm.runInNewContext(`(${durationFunctionSource})(406872)`) === "6m 47s" &&
+      vm.runInNewContext(`(${durationFunctionSource})(4000)`) === "4.0s",
+  );
   ok("dashboard 保留 Codex 輸出欄", htmlText.includes("執行輸出 (Codex)"));
   ok("任務詳情顯示簡短任務編號",
     htmlText.includes('<span class="k">任務編號</span>') &&
@@ -94,9 +102,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     htmlText.includes("^[A-Za-z]+\\.[A-Za-z]+$") &&
     htmlText.includes("prompt("));
   ok("dashboard 使用 approve API", htmlText.includes("/approve") && !htmlText.includes("/verify"));
-  ok("dashboard 顯示發布狀態", htmlText.includes('publishing: "提交中"') && htmlText.includes('publish_failed: "發布失敗"'));
-  ok("dashboard 區分已發布與結果未知", htmlText.includes('published: "已發布"') && htmlText.includes('publish_unknown: "發布結果未知"'));
-  ok("dashboard 顯示發布診斷並只允許完整事件重試", htmlText.includes("last_error") && htmlText.includes("approval.attempt") && htmlText.includes("publish-retry") && htmlText.includes("!t.approval.malformed"));
+  ok("dashboard 驗收後只顯示已完成", htmlText.includes('done: "已完成"') && !htmlText.includes('publishing: "提交中"'));
+  ok("dashboard 不再顯示發布結果狀態", !htmlText.includes('published: "已發布"') && !htmlText.includes('publish_unknown: "發布結果未知"'));
+  ok("dashboard 不提供發布重試", !htmlText.includes("publish-retry") && !htmlText.includes("重試發布"));
   ok("dashboard 顯示已關閉狀態與關閉資訊",
     htmlText.includes('closed: "已關閉"') &&
     htmlText.includes("t.closure.closed_by") &&
@@ -194,7 +202,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("受阻任務可設為已關閉", closeBlocked.status === 201);
 
   for (const statusName of ["failed", "unknown"]) {
-    const id = `close-publish-${statusName}`;
+    const id = `accepted-${statusName}`;
     fs.writeFileSync(path.join(queueDir, "done", `${id}.json`), JSON.stringify({ rule: "x", task: "skill-dispatch" }), "utf8");
     fs.mkdirSync(path.join(queueDir, "approvals", statusName), { recursive: true });
     fs.writeFileSync(path.join(queueDir, "approvals", statusName, `${id}.json`), JSON.stringify({
@@ -203,7 +211,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     const response = await fetch(`${base}/api/tasks/${id}/close`, {
       method: "POST", body: JSON.stringify({ closed_by: "patrick.zyx" }),
     });
-    ok(`發布${statusName === "failed" ? "失敗" : "結果未知"}任務可設為已關閉`, response.status === 201);
+    ok(`已有驗收事件的 ${statusName} 通知仍是已完成任務`, response.status === 409);
   }
 
   fs.writeFileSync(path.join(queueDir, "pending", "cannot-close.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
@@ -240,7 +248,8 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("approval 保存公司 ID 並去除前後空白", approval.approved_by === "patrick.zyx");
   ok("approval 分支取自任務而非 request", approval.target_branch === "main");
   ok("approval 帶完整 task_id 與專案路徑", approval.task_id === "v1" && approval.project_path === root);
-  ok("approval 綁定 Task 專屬 worktree", approval.workspace_path === v1Workspace);
+  ok("approval 只使用 project_path，不綁定舊 worktree", !Object.prototype.hasOwnProperty.call(approval, "workspace_path"));
+  ok("approval 通知內容固定為提交代碼", approval.message === "提交代碼");
   ok("approval 時間由 server 產生", approval.approved_at !== "2000-01-01" && Number.isFinite(Date.parse(approval.approved_at)));
 
   const duplicate = await fetch(`${base}/api/tasks/v1/approve`, {
@@ -250,6 +259,8 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("重複 approve 回既有事件", duplicate.status === 200);
   const approvalAgain = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
   ok("重複 approve 不覆寫人員或時間", approvalAgain.approved_by === approval.approved_by && approvalAgain.approved_at === approval.approved_at);
+  const acceptedTask = (await (await fetch(`${base}/api/tasks`)).json()).find((item) => item.id === "v1");
+  ok("approve 後任務立即算已完成", acceptedTask.verified === true && acceptedTask.approval.status === "pending");
 
   for (const invalidId of ["", "patrick", "patrick.zyx.extra", "patrick.123", "王小明"]) {
     const invalidApproval = await fetch(`${base}/api/tasks/v1/approve`, {
@@ -279,15 +290,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   fs.writeFileSync(approvalFile, JSON.stringify(failedApproval), "utf8");
   fs.renameSync(approvalFile, path.join(queueDir, "approvals", "failed", "v1.json"));
   const retryPublish = await fetch(`${base}/api/tasks/v1/publish-retry`, { method: "POST" });
-  ok("發布失敗可由 Dashboard 重試", retryPublish.status === 200 && fs.existsSync(approvalFile));
-  const retriedApproval = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
-  ok("重試發布保留原驗收身分與時間", retriedApproval.approved_by === approval.approved_by && retriedApproval.approved_at === approval.approved_at);
-  ok("重試發布重設執行次數但保留重試記錄", retriedApproval.attempt === 0 && retriedApproval.retry_count === 1);
-
-  fs.writeFileSync(path.join(queueDir, "done", "malformed-publish.json"), JSON.stringify({ task: "skill-dispatch", project_path: root, target_branch: "main" }), "utf8");
-  fs.writeFileSync(path.join(queueDir, "approvals", "failed", "malformed-publish.json"), JSON.stringify({ task_id: "malformed-publish", malformed: true, last_error: "bad", attempt: 0 }), "utf8");
-  const retryMalformed = await fetch(`${base}/api/tasks/malformed-publish/publish-retry`, { method: "POST" });
-  ok("損毀 approval 不可從 Dashboard 重試", retryMalformed.status === 409);
+  ok("舊發布重試 API 已移除", retryPublish.status === 404);
+  const acceptedAfterNotificationFailure = (await (await fetch(`${base}/api/tasks`)).json()).find((item) => item.id === "v1");
+  ok("通知失敗不回退已完成狀態", acceptedAfterNotificationFailure.verified === true && acceptedAfterNotificationFailure.approval.status === "failed");
 
   const legacyVerify = await fetch(`${base}/api/tasks/v1/verify`, { method: "POST" });
   ok("舊 verify API 已移除", legacyVerify.status === 404 && !fs.existsSync(path.join(queueDir, "work", "v1", "verified.json")));

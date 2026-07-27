@@ -4,112 +4,198 @@ const path = require("path");
 const { ensureDir } = require("./fsUtils");
 const { readState } = require("./executors/checkpoint");
 
-// 崩潰重試保險:一個任務被回收重跑的最大嘗試次數。超過即放棄自動重試、送 failed/。
-// state.attempt 由 agentExecutor 每次開跑時 +1,故硬崩潰(worker 程序死掉)也會被計入,避免無限重撿。
 const DEFAULT_MAX_ATTEMPTS = parseInt(process.env.MAX_TASK_ATTEMPTS || "3", 10);
 
-// 任務結束後發通知(可選)。deps.notify 不存在則略過;通知失敗不影響佇列。
 async function safeNotify(deps, info) {
   if (!deps.notify) return;
   try {
     await deps.notify(info);
-  } catch (e) {
-    if (deps.logger) deps.logger.error("[worker] 寫任務通知失敗(不影響佇列):", e.message);
+  } catch (error) {
+    if (deps.logger) deps.logger.error("[worker] 通知寫入失敗（不影響任務狀態）:", error.message);
   }
 }
 
-// 處理單一 pending 任務檔:讀取 → 移 processing/ → 執行 executor → 成功移 done/、失敗移 failed/。
-// deps = { queueDir, executor(task, { logger })->Promise, logger, notify?(info)->Promise }
-// 回傳 "done" | "failed" | "blocked" | "review"。
+function appendGateSummary(queueDir, id, result) {
+  const logsDir = ensureDir(path.join(queueDir, "logs"));
+  const logFile = path.join(logsDir, `${id}.log`);
+  let duplicate = false;
+  try {
+    const lines = fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean);
+    for (let index = lines.length - 1; index >= 0; index--) {
+      let entry;
+      try { entry = JSON.parse(lines[index]); } catch (_) { continue; }
+      if (!entry.git_gate) continue;
+      duplicate = entry.status === result.status && entry.output === result.reason;
+      break;
+    }
+  } catch (_) {}
+  if (!duplicate) {
+    fs.appendFileSync(logFile, JSON.stringify({
+      status: result.status,
+      output: result.reason,
+      git_gate: true,
+    }) + "\n", "utf8");
+  }
+}
+
+function movePendingToFailed(filePath, queueDir, base, error) {
+  const failedDir = ensureDir(path.join(queueDir, "failed"));
+  const dest = path.join(failedDir, base);
+  fs.renameSync(filePath, dest);
+  fs.writeFileSync(dest + ".error.txt", String((error && error.stack) || error), "utf8");
+  return dest;
+}
+
+async function runPreflight(filePath, task, deps, id, base) {
+  if (task.task !== "skill-dispatch" || typeof deps.preflight !== "function") {
+    return "ready";
+  }
+
+  const state = readState(path.join(deps.queueDir, "work", id));
+  if (state && state.steps && state.steps.prepare === "ok") {
+    return "ready";
+  }
+
+  let result;
+  try {
+    result = await deps.preflight(task, { id, queueDir: deps.queueDir });
+  } catch (error) {
+    movePendingToFailed(filePath, deps.queueDir, base, error);
+    if (deps.logger) deps.logger.error(`[worker] ${base} 起跑檢查失敗，已移入 failed/:`, error.message);
+    await safeNotify(deps, {
+      queueDir: deps.queueDir,
+      id,
+      status: "failed",
+      task,
+      error: (error && error.message) || String(error),
+    });
+    return "failed";
+  }
+
+  if (!result || !["ready", "waiting", "blocked"].includes(result.status)) {
+    const error = new Error("Git 起跑閘門回傳無效狀態");
+    movePendingToFailed(filePath, deps.queueDir, base, error);
+    if (deps.logger) deps.logger.error(`[worker] ${base} 起跑檢查失敗，已移入 failed/:`, error.message);
+    await safeNotify(deps, { queueDir: deps.queueDir, id, status: "failed", task, error: error.message });
+    return "failed";
+  }
+
+  if (result.status === "ready") return "ready";
+
+  appendGateSummary(deps.queueDir, id, result);
+  if (result.status === "waiting") {
+    if (deps.logger) deps.logger.log(`[worker] ${base} 保留在 pending/: ${result.reason}`);
+    return "waiting";
+  }
+
+  const blockedDir = ensureDir(path.join(deps.queueDir, "blocked"));
+  fs.renameSync(filePath, path.join(blockedDir, base));
+  const structured = {
+    status: "blocked",
+    output: result.reason,
+    queueStatus: "blocked",
+    produced: [],
+  };
+  if (deps.logger) deps.logger.log(`[worker] ${base} 起跑條件無法成立，已移入 blocked/: ${result.reason}`);
+  await safeNotify(deps, {
+    queueDir: deps.queueDir,
+    id,
+    status: "blocked",
+    task,
+    result: structured,
+  });
+  return "blocked";
+}
+
+// 處理一筆 pending 任務。Git 起跑閘門在搬入 processing 及遞增 attempt 前完成。
 async function processOne(filePath, deps) {
   const { queueDir, executor, logger } = deps;
-  const processingDir = path.join(queueDir, "processing");
   const failedDir = path.join(queueDir, "failed");
   const base = path.basename(filePath);
+  const id = base.replace(/\.json$/, "");
 
   let task;
   try {
     task = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (err) {
+  } catch (error) {
     ensureDir(failedDir);
     fs.renameSync(filePath, path.join(failedDir, base));
-    logger.error(`[worker] ${base} 解析失敗 → failed/:`, err.message);
+    logger.error(`[worker] ${base} JSON 解析失敗，移入 failed/:`, error.message);
     return "failed";
   }
 
-  // 開始執行前先移到 processing/:儀表板可顯示「進行中」,且 pollOnce 只掃 pending/ 故不會重入。
-  ensureDir(processingDir);
+  const preflightStatus = await runPreflight(filePath, task, deps, id, base);
+  if (preflightStatus !== "ready") return preflightStatus;
+
+  const processingDir = ensureDir(path.join(queueDir, "processing"));
   const processingPath = path.join(processingDir, base);
   fs.renameSync(filePath, processingPath);
 
-  const id = base.replace(/\.json$/, "");
   try {
     const result = await executor(task, { logger, queueDir, id });
     const status = result && result.queueStatus;
-    if (!status) {
-      throw new Error("executor 未回傳任務結果狀態");
-    }
+    if (!status) throw new Error("executor 未回傳 queueStatus");
     if (!["done", "failed", "blocked", "review"].includes(status)) {
-      throw new Error(`未知的任務結果狀態:${status}`);
+      throw new Error(`未知的 executor queueStatus: ${status}`);
     }
     const destDir = ensureDir(path.join(queueDir, status));
     fs.renameSync(processingPath, path.join(destDir, base));
-    logger.log(`[worker] ${base} 執行結束 → ${status}/`);
+    logger.log(`[worker] ${base} 完成，移入 ${status}/`);
     await safeNotify(deps, { queueDir, id, status, task, result });
     return status;
-  } catch (err) {
+  } catch (error) {
     ensureDir(failedDir);
     const dest = path.join(failedDir, base);
     fs.renameSync(processingPath, dest);
-    fs.writeFileSync(dest + ".error.txt", String((err && err.stack) || err), "utf8");
-    logger.error(`[worker] ${base} 執行失敗 → failed/:`, err.message);
-    await safeNotify(deps, { queueDir, id, status: "failed", task, error: (err && err.message) || String(err) });
+    fs.writeFileSync(dest + ".error.txt", String((error && error.stack) || error), "utf8");
+    logger.error(`[worker] ${base} 執行失敗，移入 failed/:`, error.message);
+    await safeNotify(deps, {
+      queueDir,
+      id,
+      status: "failed",
+      task,
+      error: (error && error.message) || String(error),
+    });
     return "failed";
   }
 }
 
-// 掃描 pending/ 一輪,逐筆 processOne。回傳處理筆數。
-// 注意:只掃 pending/。若程序在任務搬到 processing/ 後、搬到 done/failed/ 前崩潰,
-// 該檔會卡在 processing/ 不會被自動回收(儀表板會一直顯示「進行中」),需人工處理。
+// 每輪只看排序後第一筆 pending，確保直接共用 project_path 時不會同時啟動下一筆。
 async function pollOnce(deps) {
-  const { queueDir } = deps;
-  const pendingDir = path.join(queueDir, "pending");
+  const pendingDir = path.join(deps.queueDir, "pending");
   if (!fs.existsSync(pendingDir)) return 0;
-  const files = fs.readdirSync(pendingDir).filter((f) => f.endsWith(".json")).sort();
-  let n = 0;
-  for (const f of files) {
-    await processOne(path.join(pendingDir, f), deps);
-    n++;
-  }
-  return n;
+  const files = fs.readdirSync(pendingDir).filter((file) => file.endsWith(".json")).sort();
+  if (!files.length) return 0;
+  const status = await processOne(path.join(pendingDir, files[0]), deps);
+  return status === "waiting" ? 0 : 1;
 }
 
-// 啟動回收:把 processing/ 內殘留任務搬回 pending/,重新撿起時會從 work/<id>/state.json 斷點續跑。
-// 崩潰重試保險:若某任務的 state.attempt 已達 maxAttempts 仍卡在 processing/(代表每次跑都讓 worker
-// 硬崩潰或卡死),不再回收重撿,改送 failed/ 交人工,避免「崩潰→回收→再崩潰」無限迴圈。
-// 回傳搬回 pending/ 的筆數(相容既有呼叫);另記 dead-letter 於 log。
 function recoverProcessing(queueDir, logger, maxAttempts = DEFAULT_MAX_ATTEMPTS) {
   const processingDir = path.join(queueDir, "processing");
   const pendingDir = path.join(queueDir, "pending");
   const failedDir = path.join(queueDir, "failed");
   if (!fs.existsSync(processingDir)) return 0;
-  const files = fs.readdirSync(processingDir).filter((f) => f.endsWith(".json"));
+  const files = fs.readdirSync(processingDir).filter((file) => file.endsWith(".json"));
   let recovered = 0;
-  for (const f of files) {
-    const id = f.replace(/\.json$/, "");
+  for (const file of files) {
+    const id = file.replace(/\.json$/, "");
     const state = readState(path.join(queueDir, "work", id));
     const attempt = (state && state.attempt) || 0;
     if (attempt >= maxAttempts) {
       ensureDir(failedDir);
-      const dest = path.join(failedDir, f);
-      fs.renameSync(path.join(processingDir, f), dest);
-      fs.writeFileSync(dest + ".error.txt", `崩潰重試保險:已嘗試 ${attempt} 次仍未完成(每次都中斷),放棄自動重試,移入 failed/ 待人工處理。`, "utf8");
-      logger.error(`[worker] ${f} 已嘗試 ${attempt} 次仍中斷 → failed/(放棄自動重試,上限 ${maxAttempts})`);
+      const dest = path.join(failedDir, file);
+      fs.renameSync(path.join(processingDir, file), dest);
+      fs.writeFileSync(
+        dest + ".error.txt",
+        `崩潰重試上限：已執行 ${attempt} 次仍未完成；請人工檢查後重跑。`,
+        "utf8",
+      );
+      logger.error(`[worker] ${file} 已執行 ${attempt} 次，移入 failed/（上限 ${maxAttempts}）`);
       continue;
     }
     ensureDir(pendingDir);
-    fs.renameSync(path.join(processingDir, f), path.join(pendingDir, f));
-    logger.log(`[worker] 回收中斷任務 ${f}(已嘗試 ${attempt} 次) → pending/(將從斷點續跑)`);
+    fs.renameSync(path.join(processingDir, file), path.join(pendingDir, file));
+    logger.log(`[worker] 回收中斷任務 ${file}（已執行 ${attempt} 次），移回 pending/`);
     recovered++;
   }
   return recovered;

@@ -4,17 +4,8 @@ const path = require("path");
 const { approvalExecutor } = require("./executors/approvalExecutor");
 const { moveApproval, validateApprovalEvent, writeApproval } = require("./approvalStore");
 
-const DEFAULT_MAX_ATTEMPTS = 3;
-
 function errorMessage(error) {
-  return String((error && error.message) || error || "未知發布錯誤");
-}
-
-function resultError(result) {
-  if (result && result.status === "success") return null;
-  const status = result && result.status ? result.status : "unknown";
-  const output = result && result.output ? `: ${result.output}` : "";
-  return new Error(`專案發布回報 ${status}${output}`);
+  return String((error && error.message) || error || "未知錯誤");
 }
 
 function deadLetterMalformed(queueDir, fromStatus, taskId, error, nowFn, logger) {
@@ -30,7 +21,7 @@ function deadLetterMalformed(queueDir, fromStatus, taskId, error, nowFn, logger)
   fs.writeFileSync(
     path.join(queueDir, "approvals", "failed", `${taskId}.json.error.txt`),
     event.last_error,
-    "utf8"
+    "utf8",
   );
   if (logger) logger.error(`[approval] ${taskId} JSON 損毀，已移入 failed`);
   return "failed";
@@ -39,7 +30,6 @@ function deadLetterMalformed(queueDir, fromStatus, taskId, error, nowFn, logger)
 async function processApproval(filePath, deps) {
   const { queueDir, logger } = deps;
   const executor = deps.executor || approvalExecutor;
-  const maxAttempts = deps.maxAttempts || DEFAULT_MAX_ATTEMPTS;
   const nowFn = deps.nowFn || (() => new Date());
   const taskId = path.basename(filePath, ".json");
 
@@ -50,58 +40,57 @@ async function processApproval(filePath, deps) {
   } catch (error) {
     return deadLetterMalformed(queueDir, "pending", taskId, error, nowFn, logger);
   }
+
   moveApproval(queueDir, "pending", "processing", taskId);
   event.attempt = (event.attempt || 0) + 1;
-  if (event.reconciliation_pending) {
-    event.reconciliation_pending = false;
-    event.reconciliation_attempted = true;
-  }
-  delete event.completed_at;
-  delete event.failed_at;
   writeApproval(queueDir, "processing", event);
 
   try {
     const result = await executor(event);
-    const failure = resultError(result);
-    if (failure) throw failure;
-    event = { ...event, result, completed_at: nowFn().toISOString() };
+    event = {
+      ...event,
+      result,
+      delivered_at: nowFn().toISOString(),
+    };
     delete event.last_error;
+    delete event.failed_at;
     writeApproval(queueDir, "processing", event);
     moveApproval(queueDir, "processing", "done", taskId);
-    if (logger) logger.log(`[approval] ${taskId} 已完成發布`);
+    if (logger) logger.log(`[approval] ${taskId} 已送達「提交代碼」通知`);
     return "done";
   } catch (error) {
     event.last_error = errorMessage(error);
-    if (event.attempt >= maxAttempts) {
-      event.failed_at = nowFn().toISOString();
-      writeApproval(queueDir, "processing", event);
-      moveApproval(queueDir, "processing", "failed", taskId);
-      if (logger) logger.error(`[approval] ${taskId} 發布失敗，已達重試上限:`, event.last_error);
-      return "failed";
-    }
+    event.failed_at = nowFn().toISOString();
     writeApproval(queueDir, "processing", event);
-    moveApproval(queueDir, "processing", "pending", taskId);
-    if (logger) logger.error(`[approval] ${taskId} 發布失敗，稍後自動重試:`, event.last_error);
-    return "retry";
+    moveApproval(queueDir, "processing", "failed", taskId);
+    if (logger) logger.error(`[approval] ${taskId} 通知失敗，不自動重送:`, event.last_error);
+    return "failed";
   }
 }
 
 async function pollApprovals(deps) {
   const pendingDir = path.join(deps.queueDir, "approvals", "pending");
   let files;
-  try { files = fs.readdirSync(pendingDir).filter((file) => file.endsWith(".json")).sort(); }
-  catch (_) { return 0; }
+  try {
+    files = fs.readdirSync(pendingDir).filter((file) => file.endsWith(".json")).sort();
+  } catch (_) {
+    return 0;
+  }
   for (const file of files) {
     await processApproval(path.join(pendingDir, file), deps);
   }
   return files.length;
 }
 
-function recoverApprovals(queueDir, logger, maxAttempts = DEFAULT_MAX_ATTEMPTS) {
+function recoverApprovals(queueDir, logger, nowFn = () => new Date()) {
   const processingDir = path.join(queueDir, "approvals", "processing");
   let files;
-  try { files = fs.readdirSync(processingDir).filter((file) => file.endsWith(".json")).sort(); }
-  catch (_) { return 0; }
+  try {
+    files = fs.readdirSync(processingDir).filter((file) => file.endsWith(".json")).sort();
+  } catch (_) {
+    return 0;
+  }
+
   let recovered = 0;
   for (const file of files) {
     const taskId = file.replace(/\.json$/, "");
@@ -110,40 +99,15 @@ function recoverApprovals(queueDir, logger, maxAttempts = DEFAULT_MAX_ATTEMPTS) 
       event = JSON.parse(fs.readFileSync(path.join(processingDir, file), "utf8"));
       validateApprovalEvent(queueDir, event, taskId);
     } catch (error) {
-      deadLetterMalformed(queueDir, "processing", taskId, error, () => new Date(), logger);
+      deadLetterMalformed(queueDir, "processing", taskId, error, nowFn, logger);
       continue;
     }
-    if (event.result && event.result.status === "success" && event.completed_at) {
-      moveApproval(queueDir, "processing", "done", taskId);
-      if (logger) logger.log(`[approval] 復原已完成發布 ${taskId}`);
-      recovered++;
-      continue;
-    }
-    if (event.failed_at && event.last_error) {
-      moveApproval(queueDir, "processing", "failed", taskId);
-      if (logger) logger.error(`[approval] 復原已確認失敗的發布 ${taskId}`);
-      continue;
-    }
-    if ((event.attempt || 0) >= maxAttempts) {
-      if (!event.reconciliation_attempted) {
-        event.reconciliation_pending = true;
-        event.last_error = event.last_error || "發布結果不確定，將依 Task-ID 對帳一次";
-        writeApproval(queueDir, "processing", event);
-        moveApproval(queueDir, "processing", "pending", taskId);
-        if (logger) logger.log(`[approval] ${taskId} 發布結果不確定，排入 Task-ID 對帳`);
-        recovered++;
-        continue;
-      }
-      event.outcome_unknown = true;
-      event.unknown_at = new Date().toISOString();
-      event.last_error = "Task-ID 對帳期間再次中斷，發布結果未知";
-      writeApproval(queueDir, "processing", event);
-      moveApproval(queueDir, "processing", "unknown", taskId);
-      if (logger) logger.error(`[approval] ${taskId} 對帳中斷，移入 unknown`);
-      continue;
-    }
-    moveApproval(queueDir, "processing", "pending", taskId);
-    if (logger) logger.log(`[approval] 回收中斷的發布事件 ${taskId}`);
+
+    event.delivery_uncertain_at = nowFn().toISOString();
+    event.last_error = "worker 重啟時通知可能已送達；為避免重複通知，不再重送";
+    writeApproval(queueDir, "processing", event);
+    moveApproval(queueDir, "processing", "done", taskId);
+    if (logger) logger.log(`[approval] ${taskId} 中斷事件已結束，不重複通知`);
     recovered++;
   }
   return recovered;

@@ -44,7 +44,6 @@
   tr.task.sel { background: #283041; }
   .badge { padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; }
   .pending { background: #9ca3af; } .processing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed { background: #ef4444; } .blocked { background: #b45309; }
-  .publishing { background: #2563eb; } .publish_failed { background: #be123c; } .publish_unknown { background: #7c3aed; } .published { background: #15803d; }
   .closed { background: #475569; }
   .judging { background: #8b5cf6; } .rejected { background: #4b5563; } .judge_error { background: #b45309; }
   pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
@@ -134,7 +133,7 @@
 
 <script src="/resizable.js"></script>
 <script>
-const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", publishing: "提交中", publish_failed: "發布失敗", publish_unknown: "發布結果未知", published: "已發布", done: "完成", failed: "失敗", blocked: "受阻", closed: "已關閉", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
+const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "已完成", failed: "失敗", blocked: "受阻", closed: "已關閉", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
 const APPROVER_KEY = "element-bot.approved-by";
 const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
 const approverDisplay = document.getElementById("approverDisplay");
@@ -179,10 +178,7 @@ let lastDetailHtml = null;
 // judging = LLM 判斷進行中;judged = 已判完但沒觸發(拒絕或判斷失敗)。
 function underlyingStatus(t) {
   if (t.status === "done") {
-    if (t.approval && ["pending", "processing"].includes(t.approval.status)) return "publishing";
-    if (t.approval && t.approval.status === "failed") return "publish_failed";
-    if (t.approval && t.approval.status === "unknown") return "publish_unknown";
-    if (t.approval && t.approval.status === "done") return "published";
+    if (t.approval) return "done";
     return t.verified ? "done" : "review";
   }
   if (t.status === "judged") return t.judge && t.judge.status === "error" ? "judge_error" : "rejected";
@@ -228,9 +224,9 @@ function renderStatus(s) {
   document.getElementById("botStatus").textContent = s.bot_online ? "🟢 bot 連線中" : "🔴 bot 離線";
   document.getElementById("matrixAccount").textContent = s.matrix_account_name || "未設定";
   const c = s.counts || {};
-  const active = (c.judging || 0) + (c.pending || 0) + (c.processing || 0) + (c.publishing || 0);
+  const active = (c.judging || 0) + (c.pending || 0) + (c.processing || 0);
   const review = c.review || 0;
-  const issues = (c.blocked || 0) + (c.failed || 0) + (c.publish_failed || 0) + (c.publish_unknown || 0);
+  const issues = (c.blocked || 0) + (c.failed || 0);
   document.getElementById("counts").innerHTML =
     `<span>執行中 ${active}</span><span class="warn">待驗收 ${review}</span><span class="bad">異常 ${issues}</span>`;
 }
@@ -280,6 +276,11 @@ async function selectTask(id) {
 
 function stepIcon(s) { return s === "ok" ? "✓" : s === "run" ? "⏳" : s === "error" ? "✗" : s === "stop" ? "⚠" : "○"; }
 function stepColor(s) { return s === "ok" ? "#7ee787" : s === "run" ? "#58a6ff" : (s === "error" || s === "stop") ? "#ff9d96" : "#586069"; }
+function formatDuration(ms) {
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return (ms / 1000).toFixed(1) + "s";
+  return Math.floor(totalSeconds / 60) + "m " + (totalSeconds % 60) + "s";
+}
 
 async function renderDetail() {
   const t = lastTasks.find((x) => x.id === selectedId);
@@ -291,7 +292,7 @@ async function renderDetail() {
   const stepsHtml = prog.steps.length
     ? `<div class="k" style="margin-top:8px">步驟</div>` + prog.steps.map((s) =>
         `<div style="color:${stepColor(s.status)}">${stepIcon(s.status)} ${esc(s.label)}` +
-        (s.ms != null ? ` <span class="muted">${(s.ms / 1000).toFixed(1)}s</span>` : (s.note ? ` <span class="muted">${esc(s.note)}</span>` : "")) +
+        (s.ms != null ? ` <span class="muted">${formatDuration(s.ms)}</span>` : (s.note ? ` <span class="muted">${esc(s.note)}</span>` : "")) +
         `</div>`).join("")
     : "";
 
@@ -329,21 +330,16 @@ async function renderDetail() {
   const approvalHtml = t.approval
     ? `<div><span class="k">驗收人</span> ${esc(t.approval.approved_by || "—")}</div>` +
       `<div><span class="k">驗收時間</span> ${timeFull(t.approval.approved_at)}</div>` +
-      `<div><span class="k">發布狀態</span> ${badge(underlyingStatus(t))}</div>` +
-      `<div><span class="k">發布嘗試</span> ${esc(t.approval.attempt == null ? 0 : t.approval.attempt)}</div>` +
-      (t.approval.last_error ? `<div><span class="k">發布診斷</span> <span class="failed">${esc(t.approval.last_error)}</span></div>` : "") +
-      (t.approval.failed_at ? `<div><span class="k">失敗時間</span> ${timeFull(t.approval.failed_at)}</div>` : "") +
-      (t.approval.unknown_at ? `<div><span class="k">不確定時間</span> ${timeFull(t.approval.unknown_at)}</div>` : "")
+      `<div><span class="k">專案通知</span> ${esc(t.approval.message || "提交代碼")}</div>`
     : "";
   const closureHtml = t.closure
     ? `<div><span class="k">關閉人員</span> ${esc(t.closure.closed_by || "—")}</div>` +
       `<div><span class="k">關閉時間</span> ${timeFull(t.closure.closed_at)}</div>`
     : "";
-  const closeable = ["review", "failed", "blocked", "publish_failed", "publish_unknown"].includes(displayStatus(t));
+  const closeable = ["review", "failed", "blocked"].includes(displayStatus(t));
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
     ${!t.closure && t.status === "done" && !t.verified && !t.approval ? `<button data-act="approve" class="abtn">✓ 驗收</button>` : ""}
     ${!t.closure && t.status === "done" && t.verified && !t.approval ? `<span class="muted">✓ 已驗收</span>` : ""}
-    ${!t.closure && t.status === "done" && t.approval && !t.approval.malformed && ["failed", "unknown"].includes(t.approval.status) ? `<button data-act="publish-retry" class="abtn">重試發布</button>` : ""}
     ${!t.closure && (t.status === "failed" || t.status === "blocked") ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
     ${closeable ? `<button data-act="close" class="abtn">設為已關閉</button>` : ""}
     ${t.closure ? `<button data-act="reopen" class="abtn">重新開啟</button>` : ""}
