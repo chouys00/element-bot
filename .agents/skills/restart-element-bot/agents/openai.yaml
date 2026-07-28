@@ -1,0 +1,4 @@
+interface:
+  display_name: "重啟 element-bot"
+  short_description: "安全重載 bot、worker 與 dashboard 的目前程式版本"
+  default_prompt: "使用 $restart-element-bot 安全重啟目前版本的 element-bot。"
