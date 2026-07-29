@@ -2,7 +2,12 @@
 
 // 輕量測試,不依賴測試框架:`node test/handler.test.js`,全綠則 exit 0。
 const assert = require("assert");
-const { shouldCapture, toRecord } = require("../src/handler");
+const {
+  BOT_GENERATED_KEY,
+  makeBotMessageContent,
+  shouldCapture,
+  toRecord,
+} = require("../src/handler");
 
 const ROOM = "!target:ims.opscloud.info";
 const OTHER = "!other:ims.opscloud.info";
@@ -33,6 +38,12 @@ ok("非 m.room.message 略過", shouldCapture(ROOM, msg({ type: "m.reaction" }),
 ok("無 body 略過", shouldCapture(ROOM, msg({ content: { msgtype: "m.text" } }), opts) === false);
 ok("啟動前舊訊息略過", shouldCapture(ROOM, msg({ origin_server_ts: START - 1 }), opts) === false);
 ok("本人帳號的訊息也擷取(不過濾 sender)", shouldCapture(ROOM, msg({ sender: "@patrick.zyx:ims.opscloud.info" }), opts) === true);
+const generatedContent = makeBotMessageContent("✅ 任務完成");
+ok("bot 自產訊息帶有明確標記", generatedContent[BOT_GENERATED_KEY] === true);
+ok(
+  "bot 自產通知不會再次觸發規則",
+  shouldCapture(ROOM, msg({ content: generatedContent }), opts) === false,
+);
 ok("沒有 ts 也擷取(不強制)", shouldCapture(ROOM, msg({ origin_server_ts: undefined }), opts) === true);
 
 // toRecord

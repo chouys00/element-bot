@@ -36,5 +36,8 @@ for (const entryFile of ["index.js", "worker.js"]) {
   const source = fs.readFileSync(path.join(root, "src", entryFile), "utf8");
   assert.match(source, /preflightCodexRuntime/, `${entryFile} 啟動前必須驗證 Codex runtime`);
 }
+const indexSource = fs.readFileSync(path.join(root, "src", "index.js"), "utf8");
+assert.match(indexSource, /makeBotMessageContent/, "bot 自產 Matrix 訊息必須加入可辨識標記");
+assert.doesNotMatch(indexSource, /sendTextMessage/, "bot 自產訊息不得使用無標記的 sendTextMessage");
 
 console.log("repositoryInstructions.test.js: repository instructions 通過 ✅");

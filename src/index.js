@@ -6,7 +6,7 @@ const { loginNewDevice, buildCryptoClient } = require("./matrixClient");
 const { establishTrust } = require("./trust");
 const { pruneOldDevices } = require("./devices");
 const { normalize } = require("./normalize");
-const { shouldCapture, toRecord } = require("./handler");
+const { makeBotMessageContent, shouldCapture, toRecord } = require("./handler");
 const { writeEvent, OUTPUT_FILE } = require("./writer");
 const { loadRules } = require("./rules");
 const { watchRules, reloadRules } = require("./rulesWatcher");
@@ -183,7 +183,11 @@ async function main() {
   //    由 bot 監看發送。通知房間/開關存於 storage/notify-config.json,發送前現讀故改設定免重啟。
   const notifyDir = path.join(config.queueDir, "notify");
   fs.mkdirSync(notifyDir, { recursive: true });
-  const sendFn = (roomId, text) => client.sendTextMessage(roomId, text);
+  const sendFn = (roomId, text) => client.sendEvent(
+    roomId,
+    "m.room.message",
+    makeBotMessageContent(text),
+  );
   // 查發送者在來源房間的顯示名(如 Patrick.He.t);查不到回 null,由 formatNotify 退回 @localpart。
   const resolveSender = (roomId, userId) => {
     try {
@@ -213,7 +217,7 @@ async function main() {
   const sendLifecycle = async (kind) => {
     const cfg = readNotifyConfig(STORAGE_DIR);
     if (!cfg.enabled || !cfg.room_id) return;
-    try { await client.sendTextMessage(cfg.room_id, lifecycleMessage(kind)); } catch (_) {}
+    try { await sendFn(cfg.room_id, lifecycleMessage(kind)); } catch (_) {}
   };
   await sendLifecycle("online");
   for (const sig of ["SIGINT", "SIGTERM"]) {
