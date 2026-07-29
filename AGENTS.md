@@ -9,14 +9,17 @@
 
 - Codex 是唯一支援的 agent runtime。
 - 只有 `src/codexRunner.js` 可以建構 Codex CLI 參數或啟動 `codex`。
-- 其他模組只能 `await runCodex()`，不得直接使用 `child_process` 啟動 agent CLI。
+- 其他模組只能呼叫 runner 匯出的 `preflightCodexRuntime()` 或 `runCodex()`，不得直接使用 `child_process` 解析或啟動 agent CLI。
+- Codex 必須由 OpenAI 簽署，並且 `codex login status` 必須明確回報 `Logged in using ChatGPT`；API Key、自訂 provider/base URL、未登入或不明狀態一律停止。
+- 不得 fallback 到其他 agent 或任何會額外計費的 API；安全檢查失敗時不得啟動模型。
 - Windows timeout 必須終止完整 Codex process tree；不得改回同步 runner 或 `shell:true`。
-- 未來若更換 provider，只修改 runner、直接呼叫介面、相關單元測試與現行操作文件；不得對整個 repository 做機械式全域取代。
+- 不得更換 provider 或加入其他 agent 相容層；若 runtime 不合格只能中止並提示修正環境。
 - 歷史 `docs/superpowers/` 與 `CHANGELOG.md` 應保留當時實際使用的工具名稱。
 
 ## 分派器責任
 
 - element-bot 只負責監聽 Matrix、判斷與擷取訊息、排入 queue，以及把 command 分派至規則指定的 `project_path`。
+- runtime 閘門不封鎖目標專案網路或 GitHub／GitLab；目標專案仍依自己的任務與權限執行。
 - 不得檢查、猜測、搬移或修改目標專案的 instructions、skills、MCP 或其他 agent 工具體系。
 - `skill-dispatch` 與 probe 提示詞不得硬編碼任何目標 skill 目錄。
 - 除非使用者明確把目標專案納入範圍，否則不得修改 element-bot repository 以外的目標專案。

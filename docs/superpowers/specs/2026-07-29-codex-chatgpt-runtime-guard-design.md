@@ -56,7 +56,7 @@ Windows 必須符合下列條件：
 codex login status
 ```
 
-只接受 stdout 中獨立一行完全等於 `Logged in using ChatGPT`。stderr 的一般警告可保留作診斷，但不得代替成功條件。下列結果全部拒絕：
+Codex Desktop CLI 目前把登入狀態寫到 stderr，因此檢查會合併 stdout 與 stderr，只接受其中獨立一行完全等於 `Logged in using ChatGPT`。其他一般警告可以存在，但任一輸出管道出現 API Key、未登入或矛盾狀態都會拒絕。下列結果全部拒絕：
 
 - API Key 登入；
 - 未登入；

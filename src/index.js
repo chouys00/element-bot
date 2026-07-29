@@ -21,6 +21,7 @@ const { processNotifyFile, drainNotifyDir } = require("./notifySender");
 const { readNotifyConfig } = require("./notifyConfig");
 const { resolveRoomIds, reloadRoomIds } = require("./roomsConfig");
 const { lifecycleMessage } = require("./notify");
+const { preflightCodexRuntime } = require("./codexRunner");
 const {
   writeRoomsSidecar,
   buildRoomEntries,
@@ -42,6 +43,8 @@ function waitForPrepared(client) {
 
 async function main() {
   const config = loadConfig();
+  const runtime = await preflightCodexRuntime();
+  console.log(`[codex] runtime 已驗證：${runtime.command}；登入=${runtime.login}`);
   const STORAGE_DIR = path.resolve(__dirname, "..", "storage");
   acquireLock(STORAGE_DIR);
 
@@ -79,8 +82,8 @@ async function main() {
     console.warn("[element-bot] 無法監看規則檔,熱載入停用(仍可手動重啟套用):", e.message);
   }
 
-  // 用 Codex CLI(headless）做 LLM 判斷,吃目前登入帳號的 quota,不需 API key。
-  // CLI 不存在/逾時/非零 exit 會丟錯,被 trigger 的 per-rule try/catch 接住 → 該則不觸發,bot 照常。
+  // 用已通過啟動檢查的 Codex CLI(headless）做 LLM 判斷，只吃目前 ChatGPT 登入帳號的 quota。
+  // 服務運行期間若登入狀態改變或執行逾時/失敗，會由 per-rule try/catch 接住 → 該則不觸發。
   const judgeFn = async (rule, message) => judge(rule, message);
 
   const seen = new Set(); // 以 event_id 去重(timeline 與 Decrypted 可能各觸發一次)

@@ -31,7 +31,7 @@ const agentLaunchFiles = filesUnder(path.join(repo, "src"))
   .filter((file) => {
     const text = fs.readFileSync(file, "utf8");
     return /CODEX_COMMAND/.test(text) ||
-      /(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\s*\(\s*["'`](?:codex|claude|gemini|aider)["'`]/i.test(text);
+      /(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\s*\(\s*["'`](?:codex|cursor|claude|gemini|aider)["'`]/i.test(text);
   })
   .map((file) => path.relative(repo, file).replace(/\\/g, "/"));
 assert.deepStrictEqual(agentLaunchFiles, ["src/codexRunner.js"]);
@@ -52,6 +52,9 @@ const violations = [];
 for (const file of files) {
   const text = fs.readFileSync(file, "utf8");
   if (/TASK_RESULT_MODE/.test(text)) violations.push(`${path.relative(repo, file)}: 舊結果模式切換殘留`);
+  if (/\bCursor(?:\s+(?:runtime|CLI|agent)|\.exe)/i.test(text)) {
+    violations.push(`${path.relative(repo, file)}: Cursor runtime 殘留`);
+  }
   if (/claude/i.test(text)) violations.push(`${path.relative(repo, file)}: Claude runtime 殘留`);
   if (/gemini/i.test(text)) violations.push(`${path.relative(repo, file)}: Gemini runtime 殘留`);
   if (/aider/i.test(text)) violations.push(`${path.relative(repo, file)}: Aider runtime 殘留`);

@@ -1,6 +1,6 @@
 ---
 name: setup-deploy-env
-description: 在新機器(公用電腦)上從 clone 到跑起來的環境建置與驗證。使用者說「建置環境」「部署到這台」「setup」時使用。逐項檢查 Node/Codex CLI/.env/目標專案/防火牆,啟動 bot+worker+dashboard 並驗證同事可跨機器訪問。
+description: Use when 使用者要在新機器（公用電腦）建置、部署或 setup element-bot。
 ---
 
 # element-bot 新機器環境建置
@@ -19,9 +19,9 @@ description: 在新機器(公用電腦)上從 clone 到跑起來的環境建置�
 逐項執行並回報 ✅/❌:
 
 1. **Node ≥ 22**:`node --version`。不足則請使用者安裝(mac 建議官方安裝包或 nvm;Windows 官方安裝包)。
-2. **Codex CLI 已登入且 headless 可用**：`codex --ask-for-approval never exec --ephemeral --sandbox read-only "回覆 ok 兩字即可"`（允許數十秒）。Windows 另以 `Get-Command codex` 確認解析到 `.exe`，不得使用需 `shell:true` 的 npm `.cmd` shim；若只有 `.cmd`，安裝官方 standalone/Desktop CLI，或在 `.env` 將 `CODEX_COMMAND` 指到套件內具有同版 resources 的 `codex.exe`。失敗多半是未安裝或未登入 → 請使用者在終端跑 `codex login` 完成登入後重試。judge/probe/任務執行全靠它，這步不過後面免談。
+2. **Codex CLI 身分與登入方式合格**：先執行 `codex login status`，只接受唯一一筆 `Logged in using ChatGPT`；這項檢查不呼叫模型，也不消耗額度。API Key、未登入或不明狀態都必須停止，請使用者在 Codex App／CLI 以 ChatGPT 帳號登入後重試。Windows 再用 `Get-Command codex` 確認解析到 `.exe`，並以 `Get-AuthenticodeSignature <codex.exe 絕對路徑>` 確認狀態為 `Valid`、簽署者包含 `OpenAI OpCo, LLC`；不得使用需 `shell:true` 的 npm `.cmd` shim。若只有 `.cmd`，安裝官方 standalone/Desktop CLI，或在 `.env` 將 `CODEX_COMMAND` 指到官方簽署的 `codex.exe`。
 3. **依賴已裝**:`node_modules` 不存在或 `npm ls matrix-js-sdk` 報錯就跑 `npm install`。
-4. **真實 runtime smoke**：在 repository 根目錄跑 `npm run test:codex-smoke`，必須同時通過 read-only 與 workspace-write；若 helper 啟動失敗，依 `docs/codex-runtime-migration.md` 修正 `CODEX_COMMAND` 後重試。
+4. **真實 runtime smoke**：先取得使用者明確同意消耗目前 ChatGPT 帳號的 Codex 額度，再在 repository 根目錄跑 `npm run test:codex-smoke`；不得用模型呼叫代替第 2 步的免費登入檢查。smoke 必須通過 read-only 與 execute；若 helper 啟動失敗，依 `docs/codex-runtime-migration.md` 修正 `CODEX_COMMAND` 後重試。
 
 ## 2. 設定 .env
 
@@ -61,6 +61,7 @@ nohup npm run dashboard > dashboard.log 2> dashboard-err.log &
 Windows 用 `Start-Process node -ArgumentList "src/index.js" -WorkingDirectory <專案絕對路徑> -RedirectStandardOutput bot.log -RedirectStandardError bot-err.log`(三個程序各一條,worker 為 `src/worker.js`、dashboard 為 `src/dashboard/index.js`)。
 
 啟動後看日誌確認:
+- `bot.log` 與 `worker.log` 都出現 Codex 絕對路徑及 `登入=ChatGPT`；若顯示 `Codex runtime blocked`，停止部署並先修正 runtime。
 - `dashboard.log` 出現 `監控台已啟動 → http://0.0.0.0:3000`
 - `bot.log` 完成登入與同步、無反覆報錯(首次登入 + key backup 還原可能要一兩分鐘)
 

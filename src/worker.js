@@ -6,9 +6,12 @@ const { agentExecutor } = require("./executors/agentExecutor");
 const { writeNotifyFile } = require("./notify");
 const { approvalExecutor } = require("./executors/approvalExecutor");
 const { pollApprovals, recoverApprovals } = require("./approvalWorker");
+const { preflightCodexRuntime } = require("./codexRunner");
 
 async function main() {
   const config = loadConfig();
+  const runtime = await preflightCodexRuntime();
+  console.log(`[codex] runtime 已驗證：${runtime.command}；登入=${runtime.login}`);
   const logger = console;
   const notify = (info) => writeNotifyFile(info);
   const deps = {

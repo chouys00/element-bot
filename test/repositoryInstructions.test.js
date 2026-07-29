@@ -18,7 +18,9 @@ for (const skillPath of [setupPath, switchPath]) {
 }
 
 const setup = fs.readFileSync(setupPath, "utf8");
-assert.match(setup, /codex .*exec/i, "setup skill 必須使用 codex exec 驗證");
+assert.match(setup, /codex login status/i, "setup skill 必須以登入狀態驗證認證方式");
+assert.match(setup, /OpenAI OpCo, LLC/, "setup skill 必須驗證 Windows OpenAI 數位簽章");
+assert.doesNotMatch(setup, /claude|cursor/i, "setup skill 不得提供其他 agent fallback");
 assert.doesNotMatch(setup, /Codex -p|claude -p/i, "setup skill 不得使用其他 CLI 的 prompt 語法");
 for (const forbidden of [".claude/skills", ".agents/skills", ".cursor/skills", ".Codex/skills"]) {
   assert.ok(!setup.includes(forbidden), `setup skill 不得檢查目標 skill 目錄: ${forbidden}`);
@@ -27,6 +29,12 @@ for (const forbidden of [".claude/skills", ".agents/skills", ".cursor/skills", "
 const agents = fs.readFileSync(agentsPath, "utf8");
 assert.match(agents, /繁體中文/, "AGENTS.md 必須保存語言偏好");
 assert.match(agents, /src\/codexRunner\.js/, "AGENTS.md 必須記錄唯一 runtime 邊界");
+assert.match(agents, /Logged in using ChatGPT/, "AGENTS.md 必須記錄 ChatGPT 登入安全契約");
 assert.match(agents, /不得修改.*目標專案/s, "AGENTS.md 必須記錄目標專案邊界");
+
+for (const entryFile of ["index.js", "worker.js"]) {
+  const source = fs.readFileSync(path.join(root, "src", entryFile), "utf8");
+  assert.match(source, /preflightCodexRuntime/, `${entryFile} 啟動前必須驗證 Codex runtime`);
+}
 
 console.log("repositoryInstructions.test.js: repository instructions 通過 ✅");

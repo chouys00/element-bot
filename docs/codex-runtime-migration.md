@@ -12,6 +12,12 @@ Element-bot 只支援 Codex。所有 CLI 細節集中於 `src/codexRunner.js`：
 
 每次執行使用 `--ask-for-approval never`、`--ephemeral`、`--color never`，prompt 由 stdin 傳入。成功時 stdout 是最終回答；stderr 只作診斷，失敗時才會以限制長度附入錯誤。
 
+bot 與 worker 啟動前會先解析 Codex 的絕對路徑。Windows 只接受具有 `OpenAI OpCo, LLC`
+有效數位簽章的 `codex.exe`；所有平台都必須回報 `codex-cli`，且
+`codex login status` 必須明確顯示 `Logged in using ChatGPT`。API Key、未登入、自訂
+provider/base URL 或不明狀態一律以 `Codex runtime blocked` 停止，不會改用其他 agent。
+這些身分與登入檢查不會呼叫模型，也不消耗 Codex 額度。
+
 Judge 另透過暫存 JSON 檔使用 `--output-schema`，執行結束後立即清除。
 
 ## 任務結果契約與還原
@@ -36,6 +42,8 @@ Windows 的 `CODEX_COMMAND` 必須解析到 `codex.exe`。本專案刻意不以 
 npm 的 `codex.cmd` shim，因為 shell timeout 可能留下仍在目標專案寫入的子程序。
 若 `Get-Command codex` 只找到 `.cmd`，請安裝官方 standalone/Desktop CLI，或把
 `CODEX_COMMAND` 指到具有同版 `codex-resources` 的套件內 `codex.exe`。
+即使手動設定 `CODEX_COMMAND`，runner 仍會驗證同一個執行檔的簽章、版本與 ChatGPT
+登入狀態，不會因為環境變數而略過安全閘門。
 
 `judge`/`probe` 預設 timeout 為 120 秒；`execute` 讀取 `AI_TIMEOUT_MS`，預設 1,800,000
 毫秒（30 分鐘）。不要把 execute 默認值縮成 judge 的短 timeout。
@@ -63,28 +71,19 @@ npm 的 `codex.cmd` shim，因為 shell timeout 可能留下仍在目標專案�
 
 後續文件與 smoke-test commit 請以 `git log --oneline d30bc8e..HEAD` 查詢，不要依賴本文件中的未來 hash。
 
-## 未來換回 Claude 的最小修改範圍
+## Provider 政策
 
-若未來確定要換回 Claude Code：
+本專案的唯一 agent runtime 是以裝置 ChatGPT 帳號登入的 OpenAI Codex，不提供其他
+provider、API Key、代理 base URL 或 agent fallback。runtime 不合格時只能停止並提示
+修正環境，不能用另一個可能計費的服務繼續執行。
 
-1. 先建立新分支，不要在正式分支直接修改。
-2. 以 `ad870ae` 前一版的 `src/executors/ops.js`、`src/judge.js`、`src/probe.js` 作為行為參考，但不要整檔覆蓋，因為後續可能已有獨立修正。
-3. 以新的單一非同步 runner 取代 `src/codexRunner.js`；仍維持 timeout、stdout/stderr 與 output-schema 契約。Windows 必須用 `taskkill /T` 終止逾時的完整 process tree。
-4. 只調整 runner 的直接呼叫介面、測試、現行 UI 文案、`.env.example` 與 repository instructions。
-5. 不要恢復 `demo-skill`、`i18n-skill`、`NSL_SKILL_DIR` 或任何目標專案 skill 路徑；這些與 provider 無關，且違反分派器責任。
-6. 不要全域替換 `Codex`/`Claude`。歷史 specs、plans、CHANGELOG 應保留真實歷史，目標專案也不在修改範圍。
-7. 重新建立 provider 的真實 smoke test，通過後再啟動 bot、worker、dashboard 驗收。
-
-## Claude 舊旗標對照（僅供還原研究）
-
-| 過去 Claude Code | 現行 Codex |
-| --- | --- |
-| `claude -p` | `codex exec` |
-| `--dangerously-skip-permissions` | 不直接對應；目前使用明確 sandbox |
-| stdout 可能混合狀態資訊 | Codex final answer 在 stdout、進度在 stderr |
-
-禁止把危險旗標做一對一字串替換。新的 provider 必須重新設計最小權限。
+歷史規格、計畫與 `CHANGELOG.md` 仍保留當時實際使用過的工具名稱；這些歷史記錄不是
+現行執行方式，也不得作為恢復其他 runtime 的操作指南。
 
 ## 目標專案邊界
 
 Element-bot 不知道也不應知道目標專案使用 `.agents/skills`、`.claude/skills`、`.cursor/skills` 或其他機制。它只把 command 交給以該專案為 cwd 的 agent runtime。任何目標專案遷移都必須在另一個明確授權的任務中進行。
+
+runtime 閘門只限制 element-bot 選用的 agent，不封鎖一般網路，也不掃描目標專案的
+`.env`、API 設定或 Git 認證。目標專案接到任務後，仍可依自身規則向 GitHub／GitLab
+推送；這不是 element-bot 額外呼叫付費 API。
