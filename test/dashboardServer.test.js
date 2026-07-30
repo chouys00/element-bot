@@ -102,6 +102,9 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     htmlText.includes("^[A-Za-z]+\\.[A-Za-z]+$") &&
     htmlText.includes("prompt("));
   ok("dashboard 使用 approve API", htmlText.includes("/approve") && !htmlText.includes("/verify"));
+  ok("dashboard 驗收按鈕明確標示會提交代碼",
+    htmlText.includes('>✓ 驗收並提交代碼</button>') &&
+    !htmlText.includes('>✓ 驗收</button>'));
   ok("dashboard 驗收後只顯示已完成", htmlText.includes('done: "已完成"') && !htmlText.includes('publishing: "提交中"'));
   ok("dashboard 不再顯示發布結果狀態", !htmlText.includes('published: "已發布"') && !htmlText.includes('publish_unknown: "發布結果未知"'));
   ok("dashboard 不提供發布重試", !htmlText.includes("publish-retry") && !htmlText.includes("重試發布"));

@@ -338,7 +338,7 @@ async function renderDetail() {
     : "";
   const closeable = ["review", "failed", "blocked"].includes(displayStatus(t));
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-    ${!t.closure && t.status === "done" && !t.verified && !t.approval ? `<button data-act="approve" class="abtn">✓ 驗收</button>` : ""}
+    ${!t.closure && t.status === "done" && !t.verified && !t.approval ? `<button data-act="approve" class="abtn">✓ 驗收並提交代碼</button>` : ""}
     ${!t.closure && t.status === "done" && t.verified && !t.approval ? `<span class="muted">✓ 已驗收</span>` : ""}
     ${!t.closure && (t.status === "failed" || t.status === "blocked") ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
     ${closeable ? `<button data-act="close" class="abtn">設為已關閉</button>` : ""}
