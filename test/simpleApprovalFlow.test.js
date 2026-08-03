@@ -3,6 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { spawnSync } = require("child_process");
 const { collectTasks, taskDisplayStatus } = require("../src/dashboard/aggregate");
 const { createApproval, findApproval, moveApproval } = require("../src/approvalStore");
 const { approvalExecutor, buildApprovalPrompt } = require("../src/executors/approvalExecutor");
@@ -21,6 +22,11 @@ const task = {
 };
 const silentLogger = { log() {}, error() {} };
 
+function git(args) {
+  const result = spawnSync("git", args, { cwd: projectPath, encoding: "utf8", windowsHide: true });
+  assert.strictEqual(result.status, 0, result.stderr || `git ${args.join(" ")} 失敗`);
+}
+
 function approvalFile(status, id) {
   return path.join(queueDir, "approvals", status, `${id}.json`);
 }
@@ -28,6 +34,9 @@ function approvalFile(status, id) {
 (async () => {
   try {
     fs.mkdirSync(projectPath, { recursive: true });
+    git(["init", "-q"]);
+    git(["config", "--local", "user.name", "simple baseline"]);
+    git(["config", "--local", "user.email", "simple@example.invalid"]);
     fs.mkdirSync(path.join(queueDir, "done"), { recursive: true });
     fs.writeFileSync(path.join(queueDir, "done", `${taskId}.json`), JSON.stringify(task), "utf8");
 
@@ -90,7 +99,7 @@ function approvalFile(status, id) {
     const recoveryId = "interrupted-delivery";
     createApproval(queueDir, recoveryId, task, "patrick.zyx");
     moveApproval(queueDir, "pending", "processing", recoveryId);
-    assert.strictEqual(recoverApprovals(queueDir, silentLogger), 1);
+    assert.strictEqual(await recoverApprovals(queueDir, silentLogger), 1);
     assert.strictEqual(findApproval(queueDir, recoveryId).status, "done");
     assert.ok(!fs.existsSync(approvalFile("pending", recoveryId)), "中斷事件不可重新傳送");
 

@@ -3,14 +3,26 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { createApproval, findApproval, moveApproval } = require("../src/approvalStore");
+const { spawnSync } = require("child_process");
+const { createApproval, findApproval, moveApproval, writeApproval } = require("../src/approvalStore");
 const { pollApprovals, processApproval, recoverApprovals } = require("../src/approvalWorker");
+const gitIdentity = require("../src/approvalGitIdentity");
 
 const silentLogger = { log() {}, error() {} };
 
+function git(repo, args) {
+  const result = spawnSync("git", args, { cwd: repo, encoding: "utf8", windowsHide: true });
+  assert.strictEqual(result.status, 0, result.stderr || `git ${args.join(" ")} 失敗`);
+  return String(result.stdout || "").trim();
+}
+
 function freshQueue() {
   const queueDir = fs.mkdtempSync(path.join(os.tmpdir(), "approval-worker-"));
-  fs.mkdirSync(path.join(queueDir, "project"), { recursive: true });
+  const project = path.join(queueDir, "project");
+  fs.mkdirSync(project, { recursive: true });
+  git(project, ["init", "-q"]);
+  git(project, ["config", "--local", "user.name", "worker baseline"]);
+  git(project, ["config", "--local", "user.email", "worker@example.invalid"]);
   return queueDir;
 }
 
@@ -33,6 +45,10 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
   return path.join(queueDir, "approvals", "pending", `${id}.json`);
 }
 
+function localName(queueDir) {
+  return git(path.join(queueDir, "project"), ["config", "--local", "--get", "user.name"]);
+}
+
 (async () => {
   {
     const queueDir = freshQueue();
@@ -45,6 +61,7 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
       executor: async (event) => {
         sawProcessing = fs.existsSync(path.join(queueDir, "approvals", "processing", "success.json"));
         assert.strictEqual(event.attempt, 1);
+        assert.strictEqual(localName(queueDir), "worker.tester", "Codex 執行期間必須套用驗收人名稱");
         return { delivered: true, output: "已收到" };
       },
     });
@@ -54,6 +71,10 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
     assert.strictEqual(saved.status, "done");
     assert.strictEqual(saved.event.delivered_at, "2026-07-21T02:00:00.000Z");
     assert.deepStrictEqual(saved.event.result, { delivered: true, output: "已收到" });
+    assert.strictEqual(saved.event.git_identity.applied_name, "worker.tester");
+    assert.strictEqual(saved.event.git_identity.previous_local_name, "worker baseline");
+    assert.ok(saved.event.git_identity.restored_at);
+    assert.strictEqual(localName(queueDir), "worker baseline", "成功後必須恢復原本名稱");
     fs.rmSync(queueDir, { recursive: true, force: true });
   }
 
@@ -64,7 +85,10 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
       queueDir,
       logger: silentLogger,
       nowFn: () => new Date("2026-07-21T03:00:00.000Z"),
-      executor: async () => { throw new Error("Codex 無法啟動"); },
+      executor: async () => {
+        assert.strictEqual(localName(queueDir), "worker.tester");
+        throw new Error("Codex 無法啟動");
+      },
     });
     assert.strictEqual(status, "failed");
     const saved = findApproval(queueDir, "failure");
@@ -72,15 +96,63 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
     assert.strictEqual(saved.event.attempt, 1);
     assert.strictEqual(saved.event.last_error, "Codex 無法啟動");
     assert.strictEqual(saved.event.failed_at, "2026-07-21T03:00:00.000Z");
+    assert.strictEqual(localName(queueDir), "worker baseline", "Codex 失敗後仍須恢復原本名稱");
     assert.ok(!fs.existsSync(path.join(queueDir, "approvals", "pending", "failure.json")));
     fs.rmSync(queueDir, { recursive: true, force: true });
   }
 
   {
     const queueDir = freshQueue();
+    const file = pending(queueDir, "restore-failure");
+    const status = await processApproval(file, {
+      queueDir,
+      logger: silentLogger,
+      executor: async () => ({ delivered: true, output: "已提交" }),
+      gitIdentity: {
+        ...gitIdentity,
+        restoreLocalUserName: async () => { throw new Error("模擬還原失敗"); },
+      },
+    });
+    assert.strictEqual(status, "failed", "身分還原失敗時 approval 必須失敗");
+    const saved = findApproval(queueDir, "restore-failure");
+    assert.match(saved.event.last_error, /還原.*失敗|可能殘留驗收人名稱/);
+    assert.strictEqual(localName(queueDir), "worker.tester", "測試必須證明還原失敗會留下臨時名稱");
+    fs.rmSync(queueDir, { recursive: true, force: true });
+  }
+
+  {
+    const queueDir = freshQueue();
+    const file = pending(queueDir, "setup-failure");
+    let invoked = false;
+    const status = await processApproval(file, {
+      queueDir,
+      logger: silentLogger,
+      executor: async () => { invoked = true; },
+      gitIdentity: {
+        ...gitIdentity,
+        setLocalUserName: async () => { throw new Error("模擬設定失敗"); },
+      },
+    });
+    assert.strictEqual(status, "failed");
+    assert.strictEqual(invoked, false, "名稱設定失敗時不得啟動 Codex");
+    assert.strictEqual(localName(queueDir), "worker baseline");
+    fs.rmSync(queueDir, { recursive: true, force: true });
+  }
+
+  {
+    const queueDir = freshQueue();
     pending(queueDir, "interrupted");
+    const interrupted = findApproval(queueDir, "interrupted").event;
+    interrupted.git_identity = {
+      previous_local_name_present: true,
+      previous_local_name: "worker baseline",
+      applied_name: "worker.tester",
+      prepared_at: "2026-07-21T03:30:00.000Z",
+    };
     moveApproval(queueDir, "pending", "processing", "interrupted");
-    const recovered = recoverApprovals(
+    writeApproval(queueDir, "processing", interrupted);
+    git(path.join(queueDir, "project"), ["config", "--local", "user.name", "worker.tester"]);
+    const recovered = await recoverApprovals(
       queueDir,
       silentLogger,
       () => new Date("2026-07-21T04:00:00.000Z"),
@@ -89,7 +161,39 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
     const saved = findApproval(queueDir, "interrupted");
     assert.strictEqual(saved.status, "done");
     assert.strictEqual(saved.event.delivery_uncertain_at, "2026-07-21T04:00:00.000Z");
+    assert.strictEqual(saved.event.git_identity.restored_at, "2026-07-21T04:00:00.000Z");
+    assert.strictEqual(localName(queueDir), "worker baseline", "重啟回收必須先恢復原本名稱");
     assert.ok(!fs.existsSync(path.join(queueDir, "approvals", "pending", "interrupted.json")));
+    fs.rmSync(queueDir, { recursive: true, force: true });
+  }
+
+  {
+    const queueDir = freshQueue();
+    pending(queueDir, "interrupted-restore-failure");
+    const interrupted = findApproval(queueDir, "interrupted-restore-failure").event;
+    interrupted.git_identity = {
+      previous_local_name_present: true,
+      previous_local_name: "worker baseline",
+      applied_name: "worker.tester",
+      prepared_at: "2026-07-21T04:30:00.000Z",
+    };
+    moveApproval(queueDir, "pending", "processing", "interrupted-restore-failure");
+    writeApproval(queueDir, "processing", interrupted);
+    git(path.join(queueDir, "project"), ["config", "--local", "user.name", "worker.tester"]);
+    await assert.rejects(
+      () => recoverApprovals(queueDir, silentLogger, () => new Date(), {
+        gitIdentity: {
+          ...gitIdentity,
+          restoreLocalUserName: async () => { throw new Error("模擬重啟還原失敗"); },
+        },
+      }),
+      /重啟.*還原失敗|可能殘留驗收人名稱/,
+      "補還原失敗時必須在保存 failed 後阻止 worker 繼續啟動",
+    );
+    const saved = findApproval(queueDir, "interrupted-restore-failure");
+    assert.strictEqual(saved.status, "failed");
+    assert.match(saved.event.last_error, /重啟.*還原失敗|可能殘留驗收人名稱/);
+    assert.strictEqual(localName(queueDir), "worker.tester");
     fs.rmSync(queueDir, { recursive: true, force: true });
   }
 
@@ -117,7 +221,7 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
     const processingDir = path.join(queueDir, "approvals", "processing");
     fs.mkdirSync(processingDir, { recursive: true });
     fs.writeFileSync(path.join(processingDir, "bad-processing.json"), "{bad", "utf8");
-    assert.doesNotThrow(() => recoverApprovals(queueDir, silentLogger));
+    await assert.doesNotReject(() => recoverApprovals(queueDir, silentLogger));
     assert.strictEqual(findApproval(queueDir, "bad-processing").status, "failed");
     fs.rmSync(queueDir, { recursive: true, force: true });
   }
@@ -144,8 +248,10 @@ function pending(queueDir, id, approvedBy = "worker.tester") {
 
   const repo = path.resolve(__dirname, "..");
   const workerSource = fs.readFileSync(path.join(repo, "src", "worker.js"), "utf8");
+  const workerStartupSource = fs.readFileSync(path.join(repo, "src", "workerStartup.js"), "utf8");
   const configSource = fs.readFileSync(path.join(repo, "src", "config.js"), "utf8");
-  assert.ok(workerSource.includes("recoverApprovals") && workerSource.includes("pollApprovals"));
+  assert.ok(workerSource.includes("prepareWorkerRuntime") && workerSource.includes("pollApprovals"));
+  assert.ok(workerStartupSource.includes("recoverApprovals") && workerStartupSource.includes("preflightCodexRuntime"));
   assert.ok(!workerSource.includes("maxApprovalAttempts"));
   assert.ok(!configSource.includes("MAX_APPROVAL_ATTEMPTS"));
   assert.ok(!fs.readFileSync(path.join(repo, ".env.example"), "utf8").includes("MAX_APPROVAL_ATTEMPTS"));

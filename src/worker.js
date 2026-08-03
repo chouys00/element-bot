@@ -5,14 +5,14 @@ const { checkProjectGit } = require("./projectGitGate");
 const { agentExecutor } = require("./executors/agentExecutor");
 const { writeNotifyFile } = require("./notify");
 const { approvalExecutor } = require("./executors/approvalExecutor");
-const { pollApprovals, recoverApprovals } = require("./approvalWorker");
-const { preflightCodexRuntime } = require("./codexRunner");
+const { pollApprovals } = require("./approvalWorker");
+const { prepareWorkerRuntime } = require("./workerStartup");
 
 async function main() {
   const config = loadConfig();
-  const runtime = await preflightCodexRuntime();
-  console.log(`[codex] runtime 已驗證：${runtime.command}；登入=${runtime.login}`);
   const logger = console;
+  const runtime = await prepareWorkerRuntime(config.queueDir, logger);
+  console.log(`[codex] runtime 已驗證：${runtime.command}；登入=${runtime.login}`);
   const notify = (info) => writeNotifyFile(info);
   const deps = {
     queueDir: config.queueDir,
@@ -29,7 +29,6 @@ async function main() {
 
   logger.log(`[worker] 已啟動，監看 ${config.queueDir}/pending，每 ${config.pollIntervalMs}ms 處理一筆`);
   recoverProcessing(config.queueDir, logger, config.maxTaskAttempts);
-  recoverApprovals(config.queueDir, logger);
 
   const loop = async () => {
     try {

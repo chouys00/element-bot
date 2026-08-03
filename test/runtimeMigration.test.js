@@ -44,9 +44,12 @@ const gitLaunchFiles = filesUnder(path.join(repo, "src"))
   .map((file) => path.relative(repo, file).replace(/\\/g, "/"));
 assert.deepStrictEqual(
   gitLaunchFiles,
-  ["src/projectGitGate.js"],
-  `只有唯讀 Git 起跑閘門可啟動 Git: ${gitLaunchFiles.join(", ")}`,
+  ["src/approvalGitIdentity.js", "src/projectGitGate.js"],
+  `只有唯讀 Git 起跑閘門與驗收身分模組可啟動 Git: ${gitLaunchFiles.join(", ")}`,
 );
+const approvalGitIdentity = fs.readFileSync(path.join(repo, "src", "approvalGitIdentity.js"), "utf8");
+assert.match(approvalGitIdentity, /\["config", "--local"/);
+assert.doesNotMatch(approvalGitIdentity, /["'`](?:add|commit|push|reset|checkout)["'`]/i);
 
 const violations = [];
 for (const file of files) {

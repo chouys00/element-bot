@@ -19,6 +19,9 @@ const event = {
     assert.ok(prompt.includes(value), `prompt 應包含 ${value}`);
   }
   assert.ok(prompt.includes("通知內容：提交代碼"));
+  assert.ok(prompt.includes('git config --local user.name "王小明"'));
+  assert.ok(prompt.includes("commit message") && prompt.includes("提交代碼"));
+  assert.ok(prompt.includes("Codex 結束後") && prompt.includes("還原"));
   assert.ok(prompt.includes("AGENTS.md") && prompt.includes("instructions") && prompt.includes("skills"));
   assert.ok(prompt.includes("只負責把此訊息送達"));
   for (const forbidden of ["Task-ID:", "Approved-by:", "不得重複 commit", "push", "worktree"]) {

@@ -73,6 +73,26 @@ try {
   assert.throws(() => validateApprovalEvent(queueDir, { ...first.event, task_id: "other" }, "task-1"), /task_id/);
   assert.throws(() => validateApprovalEvent(queueDir, { ...first.event, message: "其他訊息" }, "task-1"), /message/);
   assert.throws(() => validateApprovalEvent(queueDir, { ...first.event, approved_at: "not-a-time" }, "task-1"), /approved_at/);
+  const withGitIdentity = {
+    ...first.event,
+    git_identity: {
+      previous_local_name_present: false,
+      previous_local_name: null,
+      applied_name: "patrick.zyx",
+      prepared_at: "2026-07-21T01:03:00.000Z",
+      applied_at: "2026-07-21T01:03:01.000Z",
+      restored_at: "2026-07-21T01:04:00.000Z",
+    },
+  };
+  assert.strictEqual(validateApprovalEvent(queueDir, withGitIdentity, "task-1"), withGitIdentity);
+  assert.throws(() => validateApprovalEvent(queueDir, {
+    ...withGitIdentity,
+    git_identity: { ...withGitIdentity.git_identity, previous_local_name_present: "no" },
+  }, "task-1"), /git_identity/);
+  assert.throws(() => validateApprovalEvent(queueDir, {
+    ...withGitIdentity,
+    git_identity: { ...withGitIdentity.git_identity, applied_name: "bad\nname" },
+  }, "task-1"), /git_identity/);
 
   for (const [index, approvedBy] of ["", "   ", "patrick", "patrick.zyx.extra", "patrick.123", "王小明", "a\nb", "x".repeat(101)].entries()) {
     assert.throws(() => createApproval(queueDir, `bad-name-${index}`, task, approvedBy), /公司 ID/);

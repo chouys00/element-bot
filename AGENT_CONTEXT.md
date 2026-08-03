@@ -89,9 +89,9 @@ dirty、錯誤分支或 detached HEAD 會讓任務保留在 pending，不啟動 
 }
 ```
 
-按下「驗收」並成功建立事件後，Dashboard 立即把任務顯示為「已完成」，不等待通知處理結果。事件依狀態保存於 `queue/approvals/pending|processing|done|failed/`；`unknown` 只保留給既有歷史事件相容。worker 透過 Codex 在 `project_path` 送出「提交代碼」，讓目標專案依自己的 AGENTS.md、instructions、skills 與既有流程處理。
+按下「驗收」並成功建立事件後，Dashboard 立即把任務顯示為「已完成」，不等待通知處理結果。事件依狀態保存於 `queue/approvals/pending|processing|done|failed/`；`unknown` 只保留給既有歷史事件相容。worker 先保存目標 repository 原本的 local `user.name`，暫時執行 `git config --local user.name <approved_by>`，再透過 Codex 在 `project_path` 送出「提交代碼」，讓目標專案依自己的 AGENTS.md、instructions、skills 與既有流程處理。Codex 結束、失敗或逾時後會恢復原狀；原本沒有 local 值時移除臨時值，`user.email` 不變。
 
-element-bot 只直接執行起跑用的唯讀 Git 查詢與這次通知，不檢查或追蹤目標專案是否 commit、push。Codex 呼叫正常結束即視為訊息已送達；啟動、逾時或 CLI 錯誤會把事件記為 `failed`，但任務仍維持已完成且不自動重送。worker 重啟時遇到中斷在 `processing` 的事件會直接結束，不重新傳送，以避免專案收到重複通知。既有含 `workspace_path` 的舊事件仍可讀取，但通知一律送到 `project_path`。
+element-bot 除起跑用的唯讀 Git 查詢外，只允許驗收身分模組暫時設定與還原 local `user.name`，不直接執行或檢查 commit、push。Codex 呼叫正常結束即視為訊息已送達；啟動、逾時、CLI 或身分還原錯誤會把事件記為 `failed`，但任務仍維持已完成且不自動重送。worker 重啟時遇到中斷在 `processing` 的事件會先補做身分還原，再直接結束而不重新傳送，以避免專案收到重複通知；補還原失敗時會在 failed 落盤後停止 worker 啟動，避免殘留名稱影響後續任務。既有含 `workspace_path` 的舊事件仍可讀取，但通知一律送到 `project_path`。
 
 ## 驗收連結（v1.7+）
 

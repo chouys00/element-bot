@@ -79,6 +79,42 @@ function validateInput(taskId, task, approvedBy) {
   }
 }
 
+function validTimestamp(value) {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+function validateGitIdentity(identity) {
+  if (!identity || typeof identity !== "object" || Array.isArray(identity)) {
+    throw new Error("approval event git_identity 不合法");
+  }
+  if (typeof identity.previous_local_name_present !== "boolean") {
+    throw new Error("approval event git_identity.previous_local_name_present 不合法");
+  }
+  if (identity.previous_local_name_present) {
+    if (typeof identity.previous_local_name !== "string" || /[\u0000\u000a\u000d]/.test(identity.previous_local_name)) {
+      throw new Error("approval event git_identity.previous_local_name 不合法");
+    }
+  } else if (identity.previous_local_name !== null) {
+    throw new Error("approval event git_identity.previous_local_name 不合法");
+  }
+  if (typeof identity.applied_name !== "string" || !identity.applied_name ||
+      identity.applied_name.length > 100 || /[\u0000-\u001f\u007f]/.test(identity.applied_name)) {
+    throw new Error("approval event git_identity.applied_name 不合法");
+  }
+  if (!validTimestamp(identity.prepared_at)) {
+    throw new Error("approval event git_identity.prepared_at 不合法");
+  }
+  for (const key of ["applied_at", "restored_at"]) {
+    if (identity[key] !== undefined && !validTimestamp(identity[key])) {
+      throw new Error(`approval event git_identity.${key} 不合法`);
+    }
+  }
+  if (identity.restore_error !== undefined &&
+      (typeof identity.restore_error !== "string" || !identity.restore_error)) {
+    throw new Error("approval event git_identity.restore_error 不合法");
+  }
+}
+
 function validateApprovalEvent(queueDir, event, expectedTaskId) {
   if (!event || typeof event !== "object" || Array.isArray(event)) throw new Error("approval event 必須是物件");
   if (!safeId(event.task_id) || event.task_id !== expectedTaskId) throw new Error("approval event task_id 與檔名不符");
@@ -113,6 +149,7 @@ function validateApprovalEvent(queueDir, event, expectedTaskId) {
   if (event.retry_count !== undefined && (!Number.isInteger(event.retry_count) || event.retry_count < 0)) {
     throw new Error("approval event retry_count 不合法");
   }
+  if (event.git_identity !== undefined) validateGitIdentity(event.git_identity);
   return event;
 }
 

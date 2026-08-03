@@ -118,6 +118,16 @@ function writePending(id, task) {
     assert.strictEqual(saved.status, "done");
     assert.strictEqual(saved.event.result.delivered, true);
     assert.ok(saved.event.result.output.length > 0);
+    const approvedHead = git(["rev-parse", "HEAD"]);
+    assert.notStrictEqual(approvedHead, baselineHead, "驗收通知後應由目標專案建立 commit");
+    assert.strictEqual(git(["log", "-1", "--format=%an"]), "smoke.tester", "Author 應為驗收人");
+    assert.strictEqual(git(["log", "-1", "--format=%cn"]), "smoke.tester", "Committer 應為驗收人");
+    assert.strictEqual(
+      git(["config", "--local", "--get", "user.name"]),
+      "element-bot smoke",
+      "Codex 結束後應恢復原本 local user.name",
+    );
+    assert.strictEqual(git(["status", "--porcelain", "--", "."]), "", "驗收提交後工作樹應乾淨");
 
     console.log("codexSmoke.test.js: 真實 Codex 直接 project_path、Git 閘門與驗收通知通過 ✅");
   } finally {

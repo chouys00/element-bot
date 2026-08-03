@@ -19,6 +19,7 @@
 ## 分派器責任
 
 - element-bot 只負責監聽 Matrix、判斷與擷取訊息、排入 queue，以及把 command 分派至規則指定的 `project_path`。
+- 驗收流程唯一允許的目標專案 Git 寫入，是由 `src/approvalGitIdentity.js` 暫時執行 `git config --local user.name` 並在 Codex 結束、失敗、逾時或 worker 重啟時恢復原狀；不得由此模組執行 add、commit、push 或其他 Git 寫入。
 - runtime 閘門不封鎖目標專案網路或 GitHub／GitLab；目標專案仍依自己的任務與權限執行。
 - 不得檢查、猜測、搬移或修改目標專案的 instructions、skills、MCP 或其他 agent 工具體系。
 - `skill-dispatch` 與 probe 提示詞不得硬編碼任何目標 skill 目錄。
