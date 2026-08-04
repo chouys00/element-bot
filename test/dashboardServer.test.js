@@ -151,9 +151,25 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("已移回 pending/", fs.existsSync(path.join(queueDir, "pending", "r1.json")));
 
   fs.mkdirSync(path.join(queueDir, "blocked"), { recursive: true });
-  fs.writeFileSync(path.join(queueDir, "blocked", "r2.json"), JSON.stringify({ rule: "x", task: "t" }), "utf8");
+  fs.writeFileSync(path.join(queueDir, "blocked", "r2.json"), JSON.stringify({ rule: "x", task: "skill-dispatch" }), "utf8");
+  const r2WorkDir = path.join(queueDir, "work", "r2");
+  fs.mkdirSync(r2WorkDir, { recursive: true });
+  fs.writeFileSync(path.join(r2WorkDir, "state.json"), JSON.stringify({
+    id: "r2",
+    steps: { prepare: "ok", ai_run: "ok", verify: "ok", summarize: "ok" },
+    attempt: 1,
+  }), "utf8");
+  fs.writeFileSync(path.join(r2WorkDir, "task-result.json"), JSON.stringify({
+    status: "blocked",
+    output: "等待必要資料",
+  }), "utf8");
   const blockedRequeue = await fetch(`${base}/api/tasks/r2/requeue`, { method: "POST" });
   ok("blocked 任務可重跑", blockedRequeue.status === 200 && fs.existsSync(path.join(queueDir, "pending", "r2.json")));
+  const rerunState = JSON.parse(fs.readFileSync(path.join(r2WorkDir, "state.json"), "utf8"));
+  ok("重跑保留 prepare 並重設 Codex 與後續步驟",
+    rerunState.steps.prepare === "ok" &&
+    ["ai_run", "verify", "summarize"].every((step) => rerunState.steps[step] === "pending"));
+  ok("重跑清除舊任務結果", !fs.existsSync(path.join(r2WorkDir, "task-result.json")));
   ok("failed/ 任務已無", !fs.existsSync(path.join(queueDir, "failed", "r1.json")));
   ok("error.txt 已清", !fs.existsSync(path.join(queueDir, "failed", "r1.json.error.txt")));
 

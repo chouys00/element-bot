@@ -173,6 +173,8 @@ const identityCache = new Map();
 
 async function preflightCodexRuntime(options = {}) {
   const ops = options.runtimeOps || defaultRuntimeOps;
+  const platform = ops.platform || process.platform;
+  const runtimePath = platform === "win32" ? path.win32 : path;
   const requested = options.command || process.env.CODEX_COMMAND || "codex";
   let command;
   try {
@@ -180,11 +182,10 @@ async function preflightCodexRuntime(options = {}) {
   } catch (error) {
     throw asBlocked("解析", error);
   }
-  if (!path.isAbsolute(command)) {
+  if (!runtimePath.isAbsolute(command)) {
     throw blocked("解析", "Codex 執行檔必須解析成絕對路徑");
   }
-  if ((ops.platform || process.platform) === "win32" &&
-      path.extname(command).toLowerCase() !== ".exe") {
+  if (platform === "win32" && runtimePath.extname(command).toLowerCase() !== ".exe") {
     throw blocked("解析", "Windows 只能使用原生 codex.exe");
   }
 
@@ -201,7 +202,7 @@ async function preflightCodexRuntime(options = {}) {
   const fingerprint = `${stat.size}:${stat.mtimeMs}`;
   let identity = identityCache.get(command);
   if (!identity || identity.fingerprint !== fingerprint) {
-    if ((ops.platform || process.platform) === "win32") {
+    if (platform === "win32") {
       let signature;
       try {
         signature = await ops.verifySignature(command);

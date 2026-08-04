@@ -16,6 +16,7 @@ const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 const { ensureDir } = require("../fsUtils");
 const { createApproval } = require("../approvalStore");
 const { createClosure, findClosure, reopenClosure } = require("../taskClosureStore");
+const { resetForRerun } = require("../executors/checkpoint");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MAX_AGE_MS = 60000;
@@ -179,6 +180,7 @@ function createServer(deps) {
             if (!sourceStatus) { res.writeHead(404); return res.end("no requeueable task"); }
             ensureDir(path.join(queueDir, "pending"));
             try { fs.rmSync(path.join(queueDir, sourceStatus, id + ".json.error.txt"), { force: true }); } catch (_) {}
+            resetForRerun(path.join(queueDir, "work", id));
             fs.renameSync(from, to);
             return sendJson(res, 200, { ok: true });
           }

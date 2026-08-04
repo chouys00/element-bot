@@ -4,7 +4,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { agentExecutor, readLogLines } = require("../src/executors/agentExecutor");
-const { readState } = require("../src/executors/checkpoint");
+const { readState, resetForRerun } = require("../src/executors/checkpoint");
 
 let passed = 0;
 function ok(name, condition) { assert.ok(condition, name); passed++; }
@@ -86,6 +86,17 @@ const findSummary = (lines) => lines.find((entry) => typeof entry.status === "st
 
     ok("全部步驟已完成時還原 blocked 狀態", summary && summary.queueStatus === "blocked");
     ok("還原結果保留原始 output", summary && summary.output === "缺少必要的新圖片。");
+
+    resetForRerun(workDir);
+    const calls = [];
+    const rerunSummary = await agentExecutor(TASK, {
+      queueDir,
+      id: "f3",
+      logger: silentLogger,
+      ops: { runCodex: () => { calls.push("codex"); return CODEX_RESULT; } },
+    });
+    ok("手動重跑受阻任務會重新派發 Codex", calls.join(",") === "codex");
+    ok("手動重跑採用新的 Codex 結果", rerunSummary && rerunSummary.queueStatus === "done");
     fs.rmSync(queueDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }
 

@@ -1,4 +1,5 @@
 "use strict";
+const fs = require("fs");
 const path = require("path");
 const { readJsonSafe, writeJsonAtomic } = require("../fsUtils");
 
@@ -41,4 +42,16 @@ function markStep(state, step, status) {
   return state;
 }
 
-module.exports = { STEPS, statePath, initState, readState, writeState, nextStep, markStep };
+// Dashboard 手動重跑必須再次派發 Codex；保留 prepare，重設 ai_run 之後的流程與舊結果。
+function resetForRerun(workDir) {
+  const state = readState(workDir);
+  if (state) {
+    if (!state.steps) state.steps = {};
+    for (const step of ["ai_run", "verify", "summarize"]) state.steps[step] = "pending";
+    writeState(workDir, state);
+  }
+  fs.rmSync(path.join(workDir, "task-result.json"), { force: true });
+  return state;
+}
+
+module.exports = { STEPS, statePath, initState, readState, writeState, nextStep, markStep, resetForRerun };
