@@ -9,7 +9,7 @@ const event = {
   target_branch: "release/task-1",
   approved_by: "王小明",
   approved_at: "2026-07-21T01:02:03.000Z",
-  message: "提交代碼",
+  message: "提交代碼並推送",
   attempt: 0,
 };
 
@@ -18,13 +18,14 @@ const event = {
   for (const value of [event.task_id, event.target_branch, event.approved_by, event.approved_at]) {
     assert.ok(prompt.includes(value), `prompt 應包含 ${value}`);
   }
-  assert.ok(prompt.includes("通知內容：提交代碼"));
+  assert.ok(prompt.includes("通知內容：提交代碼並推送"));
   assert.ok(prompt.includes('git config --local user.name "王小明"'));
-  assert.ok(prompt.includes("commit message") && prompt.includes("提交代碼"));
+  assert.ok(prompt.includes("commit message") && prompt.includes("提交代碼並推送"));
+  assert.ok(prompt.includes("push"));
   assert.ok(prompt.includes("Codex 結束後") && prompt.includes("還原"));
   assert.ok(prompt.includes("AGENTS.md") && prompt.includes("instructions") && prompt.includes("skills"));
   assert.ok(prompt.includes("只負責把此訊息送達"));
-  for (const forbidden of ["Task-ID:", "Approved-by:", "不得重複 commit", "push", "worktree"]) {
+  for (const forbidden of ["Task-ID:", "Approved-by:", "不得重複 commit", "worktree"]) {
     assert.ok(!prompt.includes(forbidden), `prompt 不應控制專案後續處理：${forbidden}`);
   }
 

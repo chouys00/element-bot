@@ -107,7 +107,7 @@ function writePending(id, task) {
       () => new Date("2026-07-27T01:02:03.000Z"),
     );
     assert.ok(!Object.prototype.hasOwnProperty.call(created.event, "workspace_path"));
-    assert.strictEqual(created.event.message, "提交代碼");
+    assert.strictEqual(created.event.message, "提交代碼並推送");
     const delivered = await pollApprovals({
       queueDir,
       logger: silentLogger,

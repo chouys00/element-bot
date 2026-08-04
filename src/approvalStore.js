@@ -5,7 +5,8 @@ const { ensureDir, writeJsonAtomic } = require("./fsUtils");
 
 const APPROVAL_STATUSES = ["pending", "processing", "done", "failed", "unknown"];
 const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
-const APPROVAL_MESSAGE = "提交代碼";
+const APPROVAL_MESSAGE = "提交代碼並推送";
+const LEGACY_APPROVAL_MESSAGES = new Set(["提交代碼"]);
 
 function safeId(id) {
   return typeof id === "string" && id.length > 0 && id.length <= 240 &&
@@ -142,7 +143,9 @@ function validateApprovalEvent(queueDir, event, expectedTaskId) {
   if (typeof event.approved_at !== "string" || !Number.isFinite(Date.parse(event.approved_at))) {
     throw new Error("approval event approved_at 不合法");
   }
-  if (event.message !== undefined && event.message !== APPROVAL_MESSAGE) {
+  if (event.message !== undefined &&
+      event.message !== APPROVAL_MESSAGE &&
+      !LEGACY_APPROVAL_MESSAGES.has(event.message)) {
     throw new Error("approval event message 不合法");
   }
   if (!Number.isInteger(event.attempt) || event.attempt < 0) throw new Error("approval event attempt 不合法");

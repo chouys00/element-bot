@@ -42,7 +42,7 @@ try {
     target_branch: "main",
     approved_by: "patrick.zyx",
     approved_at: "2026-07-21T01:02:03.000Z",
-    message: "提交代碼",
+    message: "提交代碼並推送",
     attempt: 0,
   });
   assert.ok(!Object.prototype.hasOwnProperty.call(first.event, "workspace_path"));
@@ -63,6 +63,12 @@ try {
   assert.strictEqual(findApproval(queueDir, "missing"), null);
 
   assert.deepStrictEqual(validateApprovalEvent(queueDir, first.event, "task-1"), first.event);
+  const legacyMessage = { ...first.event, message: "提交代碼" };
+  assert.strictEqual(
+    validateApprovalEvent(queueDir, legacyMessage, "task-1").message,
+    "提交代碼",
+    "舊版提交代碼通知仍可讀取",
+  );
   const historical = { ...first.event, approved_by: "王小明" };
   delete historical.message;
   assert.strictEqual(

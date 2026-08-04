@@ -2,7 +2,7 @@
 const ops = require("./ops");
 
 function buildApprovalPrompt(event) {
-  const message = event.message || "提交代碼";
+  const message = event.message || "提交代碼並推送";
   const approvedBy = JSON.stringify(event.approved_by);
   return [
     "這是一則由 Dashboard 驗收後送出的專案通知。",
@@ -10,7 +10,7 @@ function buildApprovalPrompt(event) {
     "",
     "element-bot 已於此專案暫時執行：",
     `git config --local user.name ${approvedBy}`,
-    "請依目標專案本身的 AGENTS.md、instructions、skills 與既有流程產生 commit message 並提交代碼。",
+    "請依目標專案本身的 AGENTS.md、instructions、skills 與既有流程產生 commit message、提交代碼並推送（push）。",
     "Codex 結束後，element-bot 會還原此專案原本的 local user.name。",
     "除暫時管理此次 Git 名稱外，element-bot 只負責把此訊息送達，不等待或判定後續處理結果。",
     "",

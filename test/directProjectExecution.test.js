@@ -61,7 +61,8 @@ const task = {
     assert.ok(!Object.prototype.hasOwnProperty.call(approval.event, "workspace_path"));
 
     const approvalPrompt = buildApprovalPrompt(approval.event);
-    assert.ok(approvalPrompt.includes("通知內容：提交代碼"));
+    assert.ok(approvalPrompt.includes("通知內容：提交代碼並推送"));
+    assert.ok(approvalPrompt.includes("push"));
     assert.ok(approvalPrompt.includes("target_branch: main"));
     assert.ok(approvalPrompt.includes(`project_path: ${projectPath}`));
     assert.ok(!approvalPrompt.includes("worktree"));

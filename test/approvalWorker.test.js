@@ -54,9 +54,10 @@ function localName(queueDir) {
     const queueDir = freshQueue();
     const file = pending(queueDir, "success");
     let sawProcessing = false;
+    const logMessages = [];
     const status = await processApproval(file, {
       queueDir,
-      logger: silentLogger,
+      logger: { log(message) { logMessages.push(message); }, error() {} },
       nowFn: () => new Date("2026-07-21T02:00:00.000Z"),
       executor: async (event) => {
         sawProcessing = fs.existsSync(path.join(queueDir, "approvals", "processing", "success.json"));
@@ -75,6 +76,7 @@ function localName(queueDir) {
     assert.strictEqual(saved.event.git_identity.previous_local_name, "worker baseline");
     assert.ok(saved.event.git_identity.restored_at);
     assert.strictEqual(localName(queueDir), "worker baseline", "成功後必須恢復原本名稱");
+    assert.ok(logMessages.some((message) => message.includes("提交代碼並推送")));
     fs.rmSync(queueDir, { recursive: true, force: true });
   }
 

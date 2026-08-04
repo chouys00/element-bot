@@ -102,8 +102,8 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     htmlText.includes("^[A-Za-z]+\\.[A-Za-z]+$") &&
     htmlText.includes("prompt("));
   ok("dashboard 使用 approve API", htmlText.includes("/approve") && !htmlText.includes("/verify"));
-  ok("dashboard 驗收按鈕明確標示會提交代碼",
-    htmlText.includes('>✓ 驗收並提交代碼</button>') &&
+  ok("dashboard 驗收按鈕明確標示會推送代碼",
+    htmlText.includes('>✓ 驗收並推送</button>') &&
     !htmlText.includes('>✓ 驗收</button>'));
   ok("dashboard 驗收後只顯示已完成", htmlText.includes('done: "已完成"') && !htmlText.includes('publishing: "提交中"'));
   ok("dashboard 不再顯示發布結果狀態", !htmlText.includes('published: "已發布"') && !htmlText.includes('publish_unknown: "發布結果未知"'));
@@ -252,7 +252,7 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   ok("approval 分支取自任務而非 request", approval.target_branch === "main");
   ok("approval 帶完整 task_id 與專案路徑", approval.task_id === "v1" && approval.project_path === root);
   ok("approval 只使用 project_path，不綁定舊 worktree", !Object.prototype.hasOwnProperty.call(approval, "workspace_path"));
-  ok("approval 通知內容固定為提交代碼", approval.message === "提交代碼");
+  ok("approval 通知內容固定為提交代碼並推送", approval.message === "提交代碼並推送");
   ok("approval 時間由 server 產生", approval.approved_at !== "2000-01-01" && Number.isFinite(Date.parse(approval.approved_at)));
 
   const duplicate = await fetch(`${base}/api/tasks/v1/approve`, {

@@ -50,7 +50,7 @@ function approvalFile(status, id) {
       "patrick.zyx",
       () => new Date("2026-07-27T02:00:00.000Z"),
     );
-    assert.strictEqual(created.event.message, "提交代碼");
+    assert.strictEqual(created.event.message, "提交代碼並推送");
 
     const accepted = collectTasks(queueDir, {}, 10)[0];
     assert.strictEqual(accepted.approval.status, "pending");
@@ -58,11 +58,11 @@ function approvalFile(status, id) {
     assert.strictEqual(taskDisplayStatus(accepted), "done", "建立通知事件後任務必須立即完成");
 
     const prompt = buildApprovalPrompt(created.event);
-    assert.ok(prompt.includes("通知內容：提交代碼"));
+    assert.ok(prompt.includes("通知內容：提交代碼並推送"));
     assert.ok(prompt.includes(taskId));
     assert.ok(!prompt.includes("不得重複 commit"));
     assert.ok(!prompt.includes("Task-ID:"));
-    assert.ok(!prompt.includes("push"));
+    assert.ok(prompt.includes("push"));
 
     let invocation;
     const delivered = await approvalExecutor(created.event, {
@@ -94,7 +94,7 @@ function approvalFile(status, id) {
     assert.strictEqual(findApproval(queueDir, failureId).status, "failed");
     assert.strictEqual(findApproval(queueDir, failureId).event.attempt, 1);
     assert.ok(!fs.existsSync(approvalFile("pending", failureId)), "通知失敗不可自動重送");
-    assert.strictEqual(failedCreated.event.message, "提交代碼");
+    assert.strictEqual(failedCreated.event.message, "提交代碼並推送");
 
     const recoveryId = "interrupted-delivery";
     createApproval(queueDir, recoveryId, task, "patrick.zyx");

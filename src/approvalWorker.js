@@ -94,7 +94,7 @@ async function processApproval(filePath, deps) {
     delete event.failed_at;
     writeApproval(queueDir, "processing", event);
     moveApproval(queueDir, "processing", "done", taskId);
-    if (logger) logger.log(`[approval] ${taskId} 已送達「提交代碼」通知`);
+    if (logger) logger.log(`[approval] ${taskId} 已送達「提交代碼並推送」通知`);
     return "done";
   }
 
