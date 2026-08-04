@@ -16,7 +16,7 @@ const { enqueueTask } = require("./enqueue");
 const { startJudging, finishJudging } = require("./judgeStatus");
 const path = require("path");
 const fs = require("fs");
-const { startHeartbeat } = require("./heartbeat");
+const { startMatrixHeartbeat } = require("./heartbeat");
 const { processNotifyFile, drainNotifyDir } = require("./notifySender");
 const { readNotifyConfig } = require("./notifyConfig");
 const { resolveRoomIds, reloadRoomIds } = require("./roomsConfig");
@@ -136,6 +136,9 @@ async function main() {
     await processEvent(event);
   });
 
+  // Dashboard 的在線狀態跟隨 Matrix sync；程序活著但 token 失效時必須顯示離線。
+  startMatrixHeartbeat(client, STORAGE_DIR);
+
   // 不設 server-side room filter:改由 shouldCapture 以「可熱載入的監聽清單」在 client 端過濾。
   // 這樣新增房間即時生效(已 join 的房間都在 sync 內,不需重設 filter/重跑 sync),移除亦即時。
   // to_device(E2EE 金鑰交換)本就是 sync 頂層欄位,不受房間範圍影響,故拿掉 filter 不影響解密。
@@ -176,9 +179,6 @@ async function main() {
   } catch (e) {
     console.warn("[element-bot] 無法監看監聽清單,熱載入停用(仍可手動重啟套用):", e.message);
   }
-  // 心跳:每 30s 寫一次存活時間戳,供儀表板判斷 bot 是否在線。
-  startHeartbeat(STORAGE_DIR, 30000);
-
   // ── 任務通知:worker 沒有 Matrix client,任務結束後寫 queue/notify/<id>.json,
   //    由 bot 監看發送。通知房間/開關存於 storage/notify-config.json,發送前現讀故改設定免重啟。
   const notifyDir = path.join(config.queueDir, "notify");

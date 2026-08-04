@@ -24,12 +24,30 @@ function writeHeartbeat(storageDir) {
   fs.writeFileSync(path.join(storageDir, "bot-heartbeat"), String(Date.now()), "utf8");
 }
 
-// 立即寫一次,之後每 intervalMs 寫一次。回傳停止函式。timer.unref 避免擋住程序退出。
-function startHeartbeat(storageDir, intervalMs) {
-  writeHeartbeat(storageDir);
-  const timer = setInterval(() => writeHeartbeat(storageDir), intervalMs);
-  if (timer.unref) timer.unref();
-  return () => clearInterval(timer);
+// 保留心跳檔但把值設為離線，讓 dashboard 能立即反映 Matrix 已無法收訊息。
+function markHeartbeatOffline(storageDir) {
+  ensureDir(storageDir);
+  fs.writeFileSync(path.join(storageDir, "bot-heartbeat"), "0", "utf8");
 }
 
-module.exports = { isFresh, readHeartbeat, writeHeartbeat, startHeartbeat };
+// 心跳只跟 Matrix sync 狀態走：成功同步才在線，其餘狀態一律離線。
+function startMatrixHeartbeat(client, storageDir) {
+  markHeartbeatOffline(storageDir);
+  const onSync = (state) => {
+    if (state === "PREPARED" || state === "SYNCING") {
+      writeHeartbeat(storageDir);
+    } else {
+      markHeartbeatOffline(storageDir);
+    }
+  };
+  client.on("sync", onSync);
+  return () => client.off("sync", onSync);
+}
+
+module.exports = {
+  isFresh,
+  readHeartbeat,
+  writeHeartbeat,
+  markHeartbeatOffline,
+  startMatrixHeartbeat,
+};
