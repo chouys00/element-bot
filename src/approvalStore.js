@@ -2,11 +2,13 @@
 const fs = require("fs");
 const path = require("path");
 const { ensureDir, writeJsonAtomic } = require("./fsUtils");
+const { isCodexSessionId, readCodexSession } = require("./codexSessionStore");
 
 const APPROVAL_STATUSES = ["pending", "processing", "done", "failed", "unknown"];
 const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
 const APPROVAL_MESSAGE = "提交代碼並推送";
 const LEGACY_APPROVAL_MESSAGES = new Set(["提交代碼"]);
+const PUBLISH_STATUSES = new Set(["pending", "processing", "success", "failed", "unknown"]);
 
 function safeId(id) {
   return typeof id === "string" && id.length > 0 && id.length <= 240 &&
@@ -116,6 +118,48 @@ function validateGitIdentity(identity) {
   }
 }
 
+function validatePublish(publish) {
+  if (!publish || typeof publish !== "object" || Array.isArray(publish)) {
+    throw new Error("approval event publish 不合法");
+  }
+  if (!PUBLISH_STATUSES.has(publish.status)) {
+    throw new Error("approval event publish.status 不合法");
+  }
+  const textFields = ["remote", "branch", "commit_subject", "committer_name", "error"];
+  for (const key of textFields) {
+    if (publish[key] !== undefined &&
+        (typeof publish[key] !== "string" || !publish[key] || /[\u0000-\u001f\u007f]/.test(publish[key]))) {
+      throw new Error(`approval event publish.${key} 不合法`);
+    }
+  }
+  for (const key of ["before_head", "commit_id"]) {
+    if (publish[key] !== undefined && !/^[0-9a-f]{40,64}$/i.test(String(publish[key]))) {
+      throw new Error(`approval event publish.${key} 不合法`);
+    }
+  }
+  for (const key of ["started_at", "finished_at"]) {
+    if (publish[key] !== undefined && !validTimestamp(publish[key])) {
+      throw new Error(`approval event publish.${key} 不合法`);
+    }
+  }
+  if (publish.identity_mismatch !== undefined && typeof publish.identity_mismatch !== "boolean") {
+    throw new Error("approval event publish.identity_mismatch 不合法");
+  }
+  if (publish.status === "processing") {
+    for (const key of ["before_head", "remote", "branch", "started_at"]) {
+      if (publish[key] === undefined) throw new Error(`approval event publish.${key} 不合法`);
+    }
+  }
+  if (publish.status === "success") {
+    for (const key of [
+      "before_head", "remote", "branch", "started_at", "commit_id", "commit_subject",
+      "committer_name", "identity_mismatch", "finished_at",
+    ]) {
+      if (publish[key] === undefined) throw new Error(`approval event publish.${key} 不合法`);
+    }
+  }
+}
+
 function validateApprovalEvent(queueDir, event, expectedTaskId) {
   if (!event || typeof event !== "object" || Array.isArray(event)) throw new Error("approval event 必須是物件");
   if (!safeId(event.task_id) || event.task_id !== expectedTaskId) throw new Error("approval event task_id 與檔名不符");
@@ -148,18 +192,50 @@ function validateApprovalEvent(queueDir, event, expectedTaskId) {
       !LEGACY_APPROVAL_MESSAGES.has(event.message)) {
     throw new Error("approval event message 不合法");
   }
+  if (event.codex_session_id !== undefined && !isCodexSessionId(event.codex_session_id)) {
+    throw new Error("approval event codex_session_id 不合法");
+  }
   if (!Number.isInteger(event.attempt) || event.attempt < 0) throw new Error("approval event attempt 不合法");
   if (event.retry_count !== undefined && (!Number.isInteger(event.retry_count) || event.retry_count < 0)) {
     throw new Error("approval event retry_count 不合法");
   }
   if (event.git_identity !== undefined) validateGitIdentity(event.git_identity);
+  if (event.publish !== undefined) validatePublish(event.publish);
   return event;
+}
+
+function resumableSession(queueDir, taskId, expectedSessionId) {
+  const session = readCodexSession(path.join(queueDir, "work", taskId), taskId);
+  if (!session) {
+    const error = new Error("找不到原始 Codex session，請重新執行任務後再驗收");
+    error.code = "CODEX_SESSION_MISSING";
+    throw error;
+  }
+  if (session.deleted_at) {
+    const error = new Error("Codex session 已超過保存期限並刪除，無法驗收或重試");
+    error.code = "CODEX_SESSION_DELETED";
+    throw error;
+  }
+  if (expectedSessionId && session.session_id !== expectedSessionId) {
+    const error = new Error("驗收事件與目前 Codex session 不一致，請重新執行任務");
+    error.code = "CODEX_SESSION_MISSING";
+    throw error;
+  }
+  return session;
 }
 
 function createApproval(queueDir, taskId, task, approvedBy, nowFn = () => new Date()) {
   validateInput(taskId, task, approvedBy);
   const existing = findApproval(queueDir, taskId);
   if (existing) return { created: false, ...existing };
+
+  let projectStat;
+  try { projectStat = fs.statSync(path.resolve(task.project_path)); } catch (_) {}
+  if (!projectStat || !projectStat.isDirectory()) {
+    throw new Error("找不到 project_path");
+  }
+
+  const session = resumableSession(queueDir, taskId);
 
   const event = {
     task_id: taskId,
@@ -168,14 +244,10 @@ function createApproval(queueDir, taskId, task, approvedBy, nowFn = () => new Da
     approved_by: approvedBy.trim(),
     approved_at: nowFn().toISOString(),
     message: APPROVAL_MESSAGE,
+    codex_session_id: session.session_id,
     attempt: 0,
+    publish: { status: "pending" },
   };
-
-  let projectStat;
-  try { projectStat = fs.statSync(path.resolve(task.project_path)); } catch (_) {}
-  if (!projectStat || !projectStat.isDirectory()) {
-    throw new Error("找不到 project_path");
-  }
 
   validateApprovalEvent(queueDir, event, taskId);
   const file = approvalPath(queueDir, "pending", taskId);
@@ -204,12 +276,32 @@ function moveApproval(queueDir, fromStatus, toStatus, taskId) {
   return to;
 }
 
+function retryApproval(queueDir, taskId) {
+  const existing = findApproval(queueDir, taskId);
+  if (!existing) throw new Error("找不到驗收事件");
+  if (!["failed", "unknown"].includes(existing.status) || !existing.event.publish) {
+    throw new Error("只有 failed 或 unknown 的推送事件可以重試");
+  }
+  resumableSession(queueDir, taskId, existing.event.codex_session_id);
+  const publish = { ...existing.event.publish, status: "pending" };
+  delete publish.error;
+  delete publish.finished_at;
+  const event = {
+    ...existing.event,
+    publish,
+  };
+  writeApproval(queueDir, existing.status, event);
+  moveApproval(queueDir, existing.status, "pending", taskId);
+  return { status: "pending", event };
+}
+
 module.exports = {
   APPROVAL_STATUSES,
   approvalPath,
   createApproval,
   findApproval,
   moveApproval,
+  retryApproval,
   validateApprovalEvent,
   writeApproval,
 };

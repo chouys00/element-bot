@@ -13,6 +13,7 @@ const { approvalExecutor } = require("../src/executors/approvalExecutor");
 const { createApproval, findApproval } = require("../src/approvalStore");
 const { pollApprovals } = require("../src/approvalWorker");
 const { TASK_RESULT_SCHEMA } = require("../src/executors/taskResult");
+const { cleanupExpiredCodexSessions } = require("../src/codexSessionCleanup");
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "element-bot-codex-smoke-"));
 const repoDir = path.join(tempRoot, "project");
@@ -26,12 +27,14 @@ function git(args, cwd = repoDir) {
   return String(result.stdout || "").trim();
 }
 
-function runSmokeCodex(prompt, cwd) {
+function runSmokeCodex(prompt, cwd, options = {}) {
   return runCodex(prompt, {
     mode: "execute",
     cwd,
     timeoutMs: 600000,
     outputSchema: TASK_RESULT_SCHEMA,
+    persistSession: !options.resumeSessionId,
+    ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),
   });
 }
 
@@ -108,6 +111,7 @@ function writePending(id, task) {
     );
     assert.ok(!Object.prototype.hasOwnProperty.call(created.event, "workspace_path"));
     assert.strictEqual(created.event.message, "提交代碼並推送");
+    assert.match(created.event.codex_session_id, /^[0-9a-f-]{36}$/i);
     const delivered = await pollApprovals({
       queueDir,
       logger: silentLogger,
@@ -129,7 +133,18 @@ function writePending(id, task) {
     );
     assert.strictEqual(git(["status", "--porcelain", "--", "."]), "", "驗收提交後工作樹應乾淨");
 
-    console.log("codexSmoke.test.js: 真實 Codex 直接 project_path、Git 閘門與驗收通知通過 ✅");
+    const cleanup = await cleanupExpiredCodexSessions({
+      queueDir,
+      now: () => new Date("2026-08-12T00:00:00.000Z"),
+      logger: console,
+    });
+    assert.strictEqual(
+      cleanup.deleted,
+      1,
+      `smoke 建立的 session 滿七天後應由真實 Codex 官方介面刪除: ${JSON.stringify(cleanup)}`,
+    );
+
+    console.log("codexSmoke.test.js: 真實 Codex session 續接、推送驗證與七日清理通過 ✅");
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }

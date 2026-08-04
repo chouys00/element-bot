@@ -5,6 +5,7 @@ const { EventEmitter } = require("events");
 const { PassThrough } = require("stream");
 const {
   buildCodexArgs,
+  deleteCodexSession,
   defaultTimeoutMs,
   preflightCodexRuntime,
   runCodex,
@@ -41,6 +42,31 @@ function hangingChild() {
   child.stderr = new PassThrough();
   child.stdin = new PassThrough();
   child.pid = 12345;
+  return child;
+}
+
+function fakeAppServerChild(handler) {
+  const child = new EventEmitter();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.stdin = new PassThrough();
+  child.killed = false;
+  child.kill = () => { child.killed = true; };
+  let input = "";
+  child.stdin.on("data", (chunk) => {
+    input += chunk;
+    let newline;
+    while ((newline = input.indexOf("\n")) >= 0) {
+      const line = input.slice(0, newline);
+      input = input.slice(newline + 1);
+      if (line.trim()) handler(JSON.parse(line), child);
+    }
+  });
+  child.stdin.on("finish", () => {
+    child.stdout.end();
+    child.stderr.end();
+    process.nextTick(() => child.emit("close", 0));
+  });
   return child;
 }
 
@@ -218,6 +244,24 @@ function fakeRuntimeOps(name = "default") {
   ok("execute 不略過 sandbox", !executeArgs.includes("--dangerously-bypass-approvals-and-sandbox"));
   ok("execute 固定使用 gpt-5.6-terra", executeArgs[executeArgs.indexOf("--model") + 1] === "gpt-5.6-terra");
   ok("execute 固定使用 medium 思考程度", executeArgs.includes('model_reasoning_effort="medium"'));
+
+  const sessionId = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+  const persistentExecuteArgs = buildCodexArgs("execute", { persistSession: true });
+  ok("需要後續驗收的 execute 使用 JSONL", persistentExecuteArgs.includes("--json"));
+  ok("需要後續驗收的 execute 保存 session", !persistentExecuteArgs.includes("--ephemeral"));
+  ok("保存 session 的 execute 仍從 stdin 讀 prompt", persistentExecuteArgs[persistentExecuteArgs.length - 1] === "-");
+
+  const resumeArgs = buildCodexArgs("execute", { resumeSessionId: sessionId });
+  ok("驗收使用 exec resume", resumeArgs.includes("exec") && resumeArgs.includes("resume"));
+  ok("驗收只續接指定 session", resumeArgs.includes(sessionId) && !resumeArgs.includes("--last"));
+  ok("驗收對話仍會保存", !resumeArgs.includes("--ephemeral"));
+  ok("驗收 prompt 仍從 stdin 傳入", resumeArgs[resumeArgs.length - 1] === "-");
+  assert.throws(
+    () => buildCodexArgs("execute", { resumeSessionId: "last" }),
+    /session ID 不合法/,
+    "resume 不接受別名或 --last",
+  );
+  passed++;
   ok(
     "所有模式固定使用內建 openai provider",
     executeArgs.includes('model_provider="openai"') &&
@@ -255,6 +299,156 @@ function fakeRuntimeOps(name = "default") {
   ok("非同步 runner 傳入 cwd", asyncCall.options.cwd === "D:/tmp/project");
   ok("Windows runner 不透過 shell，避免 timeout 留下 Codex 子程序", asyncCall.options.shell === false);
   ok("非同步 runner 以 stdin 傳 prompt", asyncCall.input === "請回覆 ok");
+
+  const structuredOutput = '{"status":"success","output":"完成"}';
+  const jsonl = [
+    JSON.stringify({ type: "thread.started", thread_id: sessionId }),
+    JSON.stringify({ type: "turn.started" }),
+    JSON.stringify({
+      type: "item.completed",
+      item: { id: "item-1", type: "agent_message", text: structuredOutput },
+    }),
+    JSON.stringify({ type: "turn.completed", usage: {} }),
+    "",
+  ].join("\n");
+  const persistentResult = await runCodex("執行任務", {
+    mode: "execute",
+    persistSession: true,
+    cwd: "D:/tmp/project",
+    runtimeOps: runRuntime.ops,
+    spawnFn: () => fakeChild({ stdout: jsonl }),
+  });
+  assert.deepStrictEqual(
+    persistentResult,
+    { output: structuredOutput, sessionId },
+    "保存 session 時應從 JSONL 回傳精確 session ID 與最後 agent message",
+  );
+  passed++;
+
+  const resumedResult = await runCodex("驗收", {
+    mode: "execute",
+    resumeSessionId: sessionId,
+    cwd: "D:/tmp/project",
+    runtimeOps: runRuntime.ops,
+    spawnFn: () => fakeChild({ stdout: jsonl }),
+  });
+  assert.deepStrictEqual(
+    resumedResult,
+    { output: structuredOutput, sessionId },
+    "resume 應維持同一個 session ID",
+  );
+  passed++;
+
+  await rejects(
+    "resume 拒絕 Codex 回報不同 session ID",
+    () => runCodex("驗收", {
+      mode: "execute",
+      resumeSessionId: sessionId,
+      cwd: "D:/tmp/project",
+      runtimeOps: runRuntime.ops,
+      spawnFn: () => fakeChild({ stdout: jsonl.replace(sessionId, "0199a213-81c0-7800-8aa1-bbab2a035a54") }),
+    }),
+    /session ID 不一致/,
+  );
+
+  let deleteCall;
+  const deleteMessages = [];
+  const deleteResult = await deleteCodexSession(sessionId, {
+    runtimeOps: runRuntime.ops,
+    spawnFn(command, args, options) {
+      deleteCall = { command, args, options };
+      return fakeAppServerChild((message, child) => {
+        deleteMessages.push(message);
+        if (message.method === "initialize") {
+          child.stdout.write(`${JSON.stringify({ id: message.id, result: { codexHome: "C:/codex" } })}\n`);
+        }
+        if (message.method === "thread/delete") {
+          child.stdout.write(`${JSON.stringify({ id: message.id, result: {} })}\n`);
+        }
+      });
+    },
+  });
+  assert.deepStrictEqual(
+    deleteCall.args,
+    ["app-server", "--stdio"],
+    "session 清理由 runner 啟動官方 app-server",
+  );
+  passed++;
+  assert.deepStrictEqual(
+    deleteMessages.map((message) => message.method),
+    ["initialize", "initialized", "thread/delete"],
+    "完成 app-server 握手後只刪除精確 UUID",
+  );
+  passed++;
+  ok("thread/delete 只收到精確 session ID", deleteMessages[2].params.threadId === sessionId);
+  assert.deepStrictEqual(
+    deleteResult,
+    { deleted: true, metadataDeleted: true },
+    "官方刪除完整成功時回報 metadata 也已刪除",
+  );
+  passed++;
+  ok("delete 仍使用已驗證的 Codex 路徑", deleteCall.command === runRuntime.command);
+  ok("delete 不透過 shell", deleteCall.options.shell === false);
+
+  const missingRollout = `C:/codex/sessions/rollout-${sessionId}.jsonl`;
+  const partialDelete = await deleteCodexSession(sessionId, {
+    runtimeOps: runRuntime.ops,
+    pathExists: async (value) => {
+      assert.strictEqual(value, missingRollout);
+      return false;
+    },
+    spawnFn() {
+      return fakeAppServerChild((message, child) => {
+        if (message.method === "initialize") {
+          child.stdout.write(`${JSON.stringify({ id: message.id, result: { codexHome: "C:/codex" } })}\n`);
+        }
+        if (message.method === "thread/delete") {
+          child.stdout.write(`${JSON.stringify({
+            id: message.id,
+            error: { code: -32603, message: "no such table: agent_jobs" },
+          })}\n`);
+        }
+        if (message.method === "thread/read") {
+          child.stdout.write(`${JSON.stringify({
+            id: message.id,
+            result: { thread: { id: sessionId, path: missingRollout } },
+          })}\n`);
+        }
+      });
+    },
+  });
+  ok("rollout 已消失時視為內容刪除成功", partialDelete.deleted === true);
+  ok("Codex 索引未刪除時留下警告狀態", partialDelete.metadataDeleted === false && /agent_jobs/.test(partialDelete.warning));
+
+  await rejects(
+    "thread/delete 失敗且 rollout 仍存在時不得誤報成功",
+    () => deleteCodexSession(sessionId, {
+      runtimeOps: runRuntime.ops,
+      pathExists: async () => true,
+      spawnFn() {
+        return fakeAppServerChild((message, child) => {
+          if (message.method === "initialize") {
+            child.stdout.write(`${JSON.stringify({ id: message.id, result: { codexHome: "C:/codex" } })}\n`);
+          }
+          if (message.method === "thread/delete") {
+            child.stdout.write(`${JSON.stringify({ id: message.id, error: { code: -32603, message: "busy" } })}\n`);
+          }
+          if (message.method === "thread/read") {
+            child.stdout.write(`${JSON.stringify({
+              id: message.id,
+              result: { thread: { id: sessionId, path: `C:/codex/sessions/rollout-${sessionId}.jsonl` } },
+            })}\n`);
+          }
+        });
+      },
+    }),
+    /busy/,
+  );
+  await rejects(
+    "delete 拒絕非 UUID session",
+    () => deleteCodexSession("last", { runtimeOps: runRuntime.ops }),
+    /session ID 不合法/,
+  );
 
   let terminatedPid = null;
   await rejects(

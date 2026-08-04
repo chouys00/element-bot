@@ -160,14 +160,17 @@ async function processOne(filePath, deps) {
   }
 }
 
-// 每輪只看排序後第一筆 pending，確保直接共用 project_path 時不會同時啟動下一筆。
+// 每輪最多執行一筆；等待中的專案不阻擋後方其他可執行專案。
 async function pollOnce(deps) {
   const pendingDir = path.join(deps.queueDir, "pending");
   if (!fs.existsSync(pendingDir)) return 0;
   const files = fs.readdirSync(pendingDir).filter((file) => file.endsWith(".json")).sort();
   if (!files.length) return 0;
-  const status = await processOne(path.join(pendingDir, files[0]), deps);
-  return status === "waiting" ? 0 : 1;
+  for (const file of files) {
+    const status = await processOne(path.join(pendingDir, file), deps);
+    if (status !== "waiting") return 1;
+  }
+  return 0;
 }
 
 function recoverProcessing(queueDir, logger, maxAttempts = DEFAULT_MAX_ATTEMPTS) {

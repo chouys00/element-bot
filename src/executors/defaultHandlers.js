@@ -1,5 +1,6 @@
 "use strict";
 const path = require("path");
+const { writeCodexSession } = require("../codexSessionStore");
 const { getTaskDef } = require("../taskDefs");
 const { readJsonSafe, writeJsonAtomic } = require("../fsUtils");
 const { parseTaskResult, queueStatus, validateTaskResult } = require("./taskResult");
@@ -20,7 +21,16 @@ function make(ops) {
       const def = getTaskDef(task.task);
       const src = def.sourceDir(task);
       emit({ step: "ai_run", status: "run", note: "派發 Codex 依目標專案自身設定獨立執行" });
-      const output = await ops.runCodex(def.prompt(task, { id, workDir }), src);
+      const invocation = await ops.runCodex(def.prompt(task, { id, workDir }), src);
+      const output = invocation && typeof invocation === "object" ? invocation.output : invocation;
+      if (invocation && typeof invocation === "object" && workDir) {
+        const session = writeCodexSession(workDir, {
+          task_id: id,
+          session_id: invocation.sessionId,
+          created_at: new Date().toISOString(),
+        });
+        if (shared) shared.codexSession = session;
+      }
       const result = parseTaskResult(output);
       if (workDir) writeJsonAtomic(path.join(workDir, RESULT_FILE), result);
       if (shared) shared.taskResult = result;

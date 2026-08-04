@@ -36,7 +36,10 @@ const task = {
     const handlers = make({
       runCodex: async (...args) => {
         initialInvocation = args;
-        return JSON.stringify({ status: "success", output: "已修改，等待驗收" });
+        return {
+          output: JSON.stringify({ status: "success", output: "已修改，等待驗收" }),
+          sessionId: "0199a213-81c0-7800-8aa1-bbab2a035a53",
+        };
       },
     });
     const workDir = path.join(queueDir, "work", "task-direct");
@@ -79,6 +82,7 @@ const task = {
       output: JSON.stringify({ status: "blocked", output: "專案已收到，後續自行處理" }),
     });
     assert.strictEqual(publishInvocation[1], projectPath);
+    assert.deepStrictEqual(publishInvocation[2], { resumeSessionId: approval.event.codex_session_id });
 
     console.log("directProjectExecution.test.js: 初次修改與驗收通知均直接使用 project_path ✅");
   } finally {

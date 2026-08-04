@@ -32,6 +32,13 @@ assert.match(agents, /src\/codexRunner\.js/, "AGENTS.md 必須記錄唯一 runti
 assert.match(agents, /Logged in using ChatGPT/, "AGENTS.md 必須記錄 ChatGPT 登入安全契約");
 assert.match(agents, /不得修改.*目標專案/s, "AGENTS.md 必須記錄目標專案邊界");
 assert.match(agents, /git config --local user\.name/, "AGENTS.md 必須記錄驗收身分的唯一 Git 寫入例外");
+assert.match(agents, /approvalGitVerification\.js/, "AGENTS.md 必須記錄驗收後的唯讀 Git 驗證例外");
+assert.match(agents, /ls-remote/, "AGENTS.md 必須記錄遠端分支唯讀驗證方式");
+assert.match(agents, /不得.*add.*commit.*push/s, "AGENTS.md 必須禁止 element-bot 提交或推送");
+assert.match(agents, /deleteCodexSession/, "AGENTS.md 必須記錄 Codex session 清理的 runner 邊界");
+assert.match(agents, /7 天/, "AGENTS.md 必須記錄成功或關閉後的 session 保存期限");
+assert.match(agents, /不得使用.*--last/s, "AGENTS.md 必須禁止驗收以 --last 猜測 session");
+assert.match(agents, /judge.*probe.*--ephemeral/s, "AGENTS.md 必須限制 ephemeral 只用於不需續接的內部執行");
 
 const botEntrySource = fs.readFileSync(path.join(root, "src", "index.js"), "utf8");
 assert.match(botEntrySource, /preflightCodexRuntime/, "index.js 啟動前必須驗證 Codex runtime");

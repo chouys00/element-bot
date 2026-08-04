@@ -3,7 +3,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { collectTasks, statusCounts, readMessagesTail, resolveTaskLog, parseProgress, isVerified } = require("../src/dashboard/aggregate");
+const { collectTasks, statusCounts, taskDisplayStatus, readMessagesTail, resolveTaskLog, parseProgress, isVerified } = require("../src/dashboard/aggregate");
 
 let passed = 0;
 function ok(name, cond) { assert.ok(cond, name); passed++; }
@@ -60,7 +60,7 @@ ok("limit 生效", collectTasks(queueDir, rooms, 1).length === 1);
 }
 
 const counts = statusCounts(queueDir);
-ok("狀態統計正確", counts.done === 1 && counts.pending === 1 && counts.failed === 1 && counts.processing === 1);
+ok("狀態統計正確", counts.done === 0 && counts.review === 1 && counts.pending === 1 && counts.failed === 1 && counts.processing === 1);
 
 ok("無日誌回占位", resolveTaskLog(queueDir, "t1").source === "none");
 fs.writeFileSync(path.join(queueDir, "failed", "bad.json.error.txt"), "boom", "utf8");
@@ -87,21 +87,22 @@ fs.writeFileSync(path.join(queueDir, "work", "t1", "verified.json"), "{}", "utf8
 ok("verified 反映標記檔", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t1").verified === true);
 ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id === "t2").verified === false);
 
-// 一旦建立驗收通知事件，任務立即算已完成，不受通知事件內部狀態影響。
+// 驗收通知事件依實際推送狀態顯示，只有成功才算完成。
 {
   const approvalRoot = freshRoot();
   const approvalQueue = path.join(approvalRoot, "queue");
-  for (const id of ["unapproved", "pending-approval", "processing-approval", "published", "publish-failed", "publish-unknown", "legacy"]) {
+  for (const id of ["unapproved", "pending-approval", "processing-approval", "published", "publish-failed", "publish-unknown", "legacy", "legacy-approval", "legacy-failed"]) {
     writeTask(approvalQueue, "done", `${id}.json`, {
       rule: "發布", task: "skill-dispatch", project_path: "D:\\GB\\app", target_branch: "main",
       enqueued_at: "2026-07-21T01:00:00.000Z", source: {},
     });
   }
-  for (const [status, id] of [["pending", "pending-approval"], ["processing", "processing-approval"], ["done", "published"], ["failed", "publish-failed"], ["unknown", "publish-unknown"]]) {
+  for (const [status, id] of [["pending", "pending-approval"], ["processing", "processing-approval"], ["done", "published"], ["failed", "publish-failed"], ["unknown", "publish-unknown"], ["done", "legacy-approval"], ["failed", "legacy-failed"]]) {
     fs.mkdirSync(path.join(approvalQueue, "approvals", status), { recursive: true });
     fs.writeFileSync(path.join(approvalQueue, "approvals", status, `${id}.json`), JSON.stringify({
       task_id: id, project_path: "D:\\GB\\app", target_branch: "main",
       approved_by: "王小明", approved_at: "2026-07-21T02:00:00.000Z", attempt: 1,
+      ...(["legacy-approval", "legacy-failed"].includes(id) ? {} : { publish: { status: status === "done" ? "success" : status } }),
     }), "utf8");
   }
   fs.mkdirSync(path.join(approvalQueue, "work", "legacy"), { recursive: true });
@@ -110,14 +111,19 @@ ok("未驗收為 false", collectTasks(queueDir, rooms, 100).find((t) => t.id ===
   const approvalTasks = collectTasks(approvalQueue, {}, 100);
   const processingApproval = approvalTasks.find((t) => t.id === "processing-approval");
   ok("task API 帶 approval 狀態與人員", processingApproval.approval.status === "processing" && processingApproval.approval.approved_by === "王小明");
-  ok("通知尚在處理也已完成驗收", processingApproval.verified === true);
-  ok("通知失敗不回退任務完成狀態", approvalTasks.find((t) => t.id === "publish-failed").verified === true);
+  ok("等待推送尚未完成", taskDisplayStatus(approvalTasks.find((t) => t.id === "pending-approval")) === "publish_pending");
+  ok("推送中尚未完成", taskDisplayStatus(processingApproval) === "publishing" && processingApproval.verified === false);
+  ok("推送失敗不是已完成", taskDisplayStatus(approvalTasks.find((t) => t.id === "publish-failed")) === "publish_failed");
+  ok("推送結果未知不是已完成", taskDisplayStatus(approvalTasks.find((t) => t.id === "publish-unknown")) === "publish_unknown");
   ok("既有 approval done 仍算已驗收", approvalTasks.find((t) => t.id === "published").verified === true);
+  ok("沒有 publish 欄位的歷史 approval done 仍相容", taskDisplayStatus(approvalTasks.find((t) => t.id === "legacy-approval")) === "done");
+  ok("歷史 approval failed 也維持原有完成顯示", taskDisplayStatus(approvalTasks.find((t) => t.id === "legacy-failed")) === "done");
   ok("legacy verified 仍相容", approvalTasks.find((t) => t.id === "legacy").verified === true);
 
   const approvalCounts = statusCounts(approvalQueue);
-  ok("通知狀態不再拆成發布統計", approvalCounts.unverified === 1 && !("publishing" in approvalCounts) && !("publish_failed" in approvalCounts));
+  ok("推送狀態分開統計", approvalCounts.publish_pending === 1 && approvalCounts.publishing === 1 && approvalCounts.publish_failed === 1 && approvalCounts.publish_unknown === 1);
   ok("只有未核准任務列入待驗收", approvalCounts.review === 1);
+  ok("只有推送成功與歷史驗收事件列入 done", approvalCounts.done === 4);
   fs.rmSync(approvalRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
 }
 

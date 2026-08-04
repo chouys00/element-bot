@@ -7,6 +7,11 @@ const { writeNotifyFile } = require("./notify");
 const { approvalExecutor } = require("./executors/approvalExecutor");
 const { pollApprovals } = require("./approvalWorker");
 const { prepareWorkerRuntime } = require("./workerStartup");
+const { pollWorkerLoop } = require("./workerLoop");
+const {
+  cleanupExpiredCodexSessions,
+  createCodexSessionCleanupScheduler,
+} = require("./codexSessionCleanup");
 
 async function main() {
   const config = loadConfig();
@@ -26,14 +31,22 @@ async function main() {
     executor: approvalExecutor,
     logger,
   };
+  const sessionCleanup = createCodexSessionCleanupScheduler({
+    queueDir: config.queueDir,
+    cleanup: () => cleanupExpiredCodexSessions({ queueDir: config.queueDir, logger }),
+  });
 
   logger.log(`[worker] 已啟動，監看 ${config.queueDir}/pending，每 ${config.pollIntervalMs}ms 處理一筆`);
   recoverProcessing(config.queueDir, logger, config.maxTaskAttempts);
 
   const loop = async () => {
     try {
-      await pollOnce(deps);
-      await pollApprovals(approvalDeps);
+      await pollWorkerLoop(deps, approvalDeps, {
+        pollApprovals,
+        cleanupSessions: () => sessionCleanup.poll(),
+        onCleanupError: (error) => logger.error("[worker] Codex session 清理錯誤:", error.message),
+        pollOnce,
+      });
     } catch (error) {
       logger.error("[worker] 輪詢錯誤:", error.message);
     }

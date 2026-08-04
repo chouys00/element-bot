@@ -45,7 +45,10 @@ function freshWork() {
     const handlers = make({
       runCodex: async (...args) => {
         invocation = args;
-        return JSON.stringify(expected);
+        return {
+          output: JSON.stringify(expected),
+          sessionId: "0199a213-81c0-7800-8aa1-bbab2a035a53",
+        };
       },
     });
     await handlers.ai_run({
@@ -61,6 +64,8 @@ function freshWork() {
     ok("Codex 直接在 project_path 執行", invocation[1] === path.resolve(TASK.project_path));
     ok("提示詞不要求建立 worktree", !invocation[0].includes("git worktree") && !invocation[0].includes("Task 專屬工作區"));
     ok("結果原樣持久化", JSON.parse(fs.readFileSync(path.join(workDir, "task-result.json"), "utf8")).output === expected.output);
+    const session = JSON.parse(fs.readFileSync(path.join(workDir, "codex-session.json"), "utf8"));
+    ok("任務保存精確 Codex session ID", session.task_id === "task-1" && session.session_id === "0199a213-81c0-7800-8aa1-bbab2a035a53");
     ok("完整輸出交給 dashboard", emitted.some((entry) => entry.ai_output === expected.output));
     ok("沒有改動仍為 done", summary.status === "success" && summary.queueStatus === "done");
     ok("不捏造 produced", Array.isArray(summary.produced) && summary.produced.length === 0);

@@ -44,12 +44,20 @@ const gitLaunchFiles = filesUnder(path.join(repo, "src"))
   .map((file) => path.relative(repo, file).replace(/\\/g, "/"));
 assert.deepStrictEqual(
   gitLaunchFiles,
-  ["src/approvalGitIdentity.js", "src/projectGitGate.js"],
-  `只有唯讀 Git 起跑閘門與驗收身分模組可啟動 Git: ${gitLaunchFiles.join(", ")}`,
+  ["src/approvalGitIdentity.js", "src/approvalGitVerification.js", "src/projectGitGate.js"],
+  `只有唯讀 Git 起跑閘門、驗收身分與推送驗證模組可啟動 Git: ${gitLaunchFiles.join(", ")}`,
 );
 const approvalGitIdentity = fs.readFileSync(path.join(repo, "src", "approvalGitIdentity.js"), "utf8");
 assert.match(approvalGitIdentity, /\["config", "--local"/);
 assert.doesNotMatch(approvalGitIdentity, /["'`](?:add|commit|push|reset|checkout)["'`]/i);
+const approvalGitVerification = fs.readFileSync(path.join(repo, "src", "approvalGitVerification.js"), "utf8");
+assert.match(approvalGitVerification, /["'`]ls-remote["'`]/);
+assert.doesNotMatch(approvalGitVerification, /["'`](?:add|commit|push|reset|checkout|fetch|pull)["'`]/i);
+const codexRunner = fs.readFileSync(path.join(repo, "src", "codexRunner.js"), "utf8");
+const codexSessionCleanup = fs.readFileSync(path.join(repo, "src", "codexSessionCleanup.js"), "utf8");
+assert.match(codexRunner, /\["app-server", "--stdio"\]/, "只有 runner 啟動 Codex app-server");
+assert.match(codexRunner, /method: "thread\/delete"/, "只有 runner 建構 thread\/delete 請求");
+assert.doesNotMatch(codexSessionCleanup, /child_process|thread\/delete|app-server/, "清理模組不得自行啟動或建構 Codex CLI");
 
 const violations = [];
 for (const file of files) {

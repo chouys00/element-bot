@@ -65,7 +65,7 @@ Dashboard（`npm run dashboard`）提供任務監控、規則編輯與試跑介�
 
 ## 任務執行、驗收與專案通知
 
-`skill-dispatch` 規則必須設定 `project_path` 與 `target_branch`。worker 每輪只嘗試排序後第一筆 pending 任務。新任務啟動前，由專用模組執行唯讀 Git 檢查：
+`skill-dispatch` 規則必須設定 `project_path` 與 `target_branch`。worker 每輪最多執行一筆 pending 任務；等待中的專案會被略過，後方其他可執行專案仍可處理。新任務啟動前，由專用模組執行唯讀 Git 檢查：
 
 - 路徑存在且是 Git working tree。
 - 目前分支等於 `target_branch`。
@@ -73,7 +73,7 @@ Dashboard（`npm run dashboard`）提供任務監控、規則編輯與試跑介�
 
 dirty、錯誤分支或 detached HEAD 會讓任務保留在 pending，不啟動 Codex且不增加 attempt；無效路徑或非 Git repository 會移入 blocked。已有 `prepare: ok` checkpoint 的中斷任務可略過起跑閘門，繼續自己先前留下的修改。
 
-通過閘門後，Codex 直接以 `project_path` 為 cwd 修改與驗證，不建立 Task worktree，不在 Dashboard 驗收前 commit 或 push。完成一筆後，下一筆任務會等待專案重新乾淨。
+通過閘門後，Codex 直接以 `project_path` 為 cwd 修改與驗證，不建立 Task worktree，不在 Dashboard 驗收前 commit 或 push。execute 任務會保存精確 Codex session ID；完成一筆後，下一筆任務會等待專案重新乾淨。
 
 驗收人公司 ID 由各瀏覽器保存於 `localStorage`，格式為兩段英文字母以一個 `.` 分隔，屬可信內網署名，不提供防偽或登入驗證。新驗收事件包含：
 
@@ -84,14 +84,24 @@ dirty、錯誤分支或 detached HEAD 會讓任務保留在 pending，不啟動 
   "target_branch": "目標分支",
   "approved_by": "驗收人公司 ID",
   "approved_at": "伺服器產生的 ISO 8601 時間",
-  "message": "提交代碼",
-  "attempt": 0
+  "message": "提交代碼並推送",
+  "codex_session_id": "原始 execute 任務的精確 Codex session UUID",
+  "attempt": 0,
+  "publish": { "status": "pending" }
 }
 ```
 
-按下「驗收」並成功建立事件後，Dashboard 立即把任務顯示為「已完成」，不等待通知處理結果。事件依狀態保存於 `queue/approvals/pending|processing|done|failed/`；`unknown` 只保留給既有歷史事件相容。worker 先保存目標 repository 原本的 local `user.name`，暫時執行 `git config --local user.name <approved_by>`，再透過 Codex 在 `project_path` 送出「提交代碼」，讓目標專案依自己的 AGENTS.md、instructions、skills 與既有流程處理。Codex 結束、失敗或逾時後會恢復原狀；原本沒有 local 值時移除臨時值，`user.email` 不變。
+按下「驗收並推送」後，Dashboard 依序顯示「等待推送」與「推送中」，只有遠端驗證成功才顯示「已完成」。事件依狀態保存於 `queue/approvals/pending|processing|done|failed|unknown/`。worker 每輪先處理驗收事件；同一 `project_path` 有未關閉的 pending、processing、failed 或 unknown 驗收事件時，暫停該專案的新任務，其他專案照常處理。
 
-element-bot 除起跑用的唯讀 Git 查詢外，只允許驗收身分模組暫時設定與還原 local `user.name`，不直接執行或檢查 commit、push。Codex 呼叫正常結束即視為訊息已送達；啟動、逾時、CLI 或身分還原錯誤會把事件記為 `failed`，但任務仍維持已完成且不自動重送。worker 重啟時遇到中斷在 `processing` 的事件會先補做身分還原，再直接結束而不重新傳送，以避免專案收到重複通知；補還原失敗時會在 failed 落盤後停止 worker 啟動，避免殘留名稱影響後續任務。既有含 `workspace_path` 的舊事件仍可讀取，但通知一律送到 `project_path`。
+第一次處理驗收時，worker 保存本機 HEAD 並決定驗證目的地：優先使用目前分支 upstream；沒有 upstream 且只有一個 remote 時使用該 remote 與 `target_branch`；多個 remote 時不猜測。worker 暫時設定 local `user.name` 為 `approved_by`，再以精確 `codex_session_id` 續接原本執行修改的 Codex 對話，要求目標專案依自己的規範 commit 與 push，最後恢復原值。驗收與重試不得使用 `--last` 或另開對話；`user.email` 不變。
+
+Codex 結束後，以非互動式 `git ls-remote` 唯讀比對遠端分支與本機新 HEAD。遠端一致為 success；沒有新 commit、遠端不一致或目的地不明為 failed；三次遠端查詢都失敗或證據不足為 unknown。即使 Codex CLI 回報錯誤，遠端已是正確 commit 仍算 success。成功事件保存 `commit_id`、`commit_subject`、`committer_name`、`remote`、`branch` 與 `finished_at`；Committer 與驗收人不同只顯示警告，不改變推送判定。
+
+failed 與 unknown 只接受人工呼叫 `POST /api/tasks/:id/retry-approval`。重試沿用原驗收人與第一次的 `before_head`，先查遠端；已成功則不啟動 Codex，尚未成功才要求 Codex 沿用既有 commit。也可將事件設為已關閉以解除專案暫停。舊驗收事件沒有 `publish` 時不補查遠端，沿用舊相容流程並在 Dashboard 標示「舊資料未記錄推送結果」。
+
+element-bot 的 Git 寫入仍只有暫設與還原 local `user.name`；遠端驗證模組只能執行唯讀 commit／remote 查詢與 `ls-remote`，不得執行 add、commit、push、fetch 或 pull。worker 重啟會先還原身分，再依現有 Git 證據決定 success、failed 或 unknown，且不自動重跑 Codex。
+
+execute、驗收與重試會保存在同一個 Codex session；`judge` 與 `probe` 等不需續接的內部執行仍使用 `--ephemeral`。任務中斷或人工重跑產生的新 session 會成為目前驗收目標，舊 ID 仍保存在 `superseded_sessions`。推送成功或任務人工關閉後，所有相關 session 保留 7 天供追查，之後由既有 worker 最多每 24 小時檢查一次，透過 runner 呼叫 Codex 官方 app-server 的 `thread/delete`；最後清理時間保存在 queue，worker 重啟不會提早重跑。重新開啟與清理共用跨程序任務鎖；session 已刪除後，reopen、approve 與 retry 都回報衝突。等待驗收、failed、unknown、缺少 metadata、ID 不一致與舊資料一律不刪除；清理失敗只留下錯誤供下次重試，不影響任務狀態。若 rollout 內容已刪除但 Codex 自己的索引清理失敗，警告會跨清理重試保存，不直接修改 Codex 的資料夾或資料庫。
 
 ## 驗收連結（v1.7+）
 

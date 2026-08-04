@@ -14,7 +14,7 @@ const { judge } = require("../judge");
 const { readNotifyConfig, writeNotifyConfig } = require("../notifyConfig");
 const { resolveRoomIds, writeRoomsConfig } = require("../roomsConfig");
 const { ensureDir } = require("../fsUtils");
-const { createApproval } = require("../approvalStore");
+const { createApproval, findApproval, retryApproval } = require("../approvalStore");
 const { createClosure, findClosure, reopenClosure } = require("../taskClosureStore");
 const { resetForRerun } = require("../executors/checkpoint");
 
@@ -141,7 +141,7 @@ function createServer(deps) {
             return sendJson(res, 200, { error: String((e && e.message) || e), project_check: chk });
           }
         }
-        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve|close|reopen)$/);
+        const m = p.match(/^\/api\/tasks\/([^/]+)\/(requeue|approve|retry-approval|close|reopen)$/);
         if (m) {
           const id = decodeURIComponent(m[1]);
           if (!safeId(id)) { res.writeHead(400); return res.end("bad id"); }
@@ -150,26 +150,55 @@ function createServer(deps) {
             if (!task) { res.writeHead(404); return res.end("no such task"); }
             if (m[2] === "reopen") {
               try { return sendJson(res, 200, { ok: true, reopened: reopenClosure(queueDir, id) }); }
-              catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
+              catch (error) {
+                res.writeHead(error && ["SESSION_CLEANUP_BUSY", "CODEX_SESSION_DELETED"].includes(error.code) ? 409 : 400);
+                return res.end(String((error && error.message) || error));
+              }
             }
 
             let raw;
             try { raw = await readBody(req, 4096); } catch (_) { res.writeHead(413); return res.end("body too large"); }
             let body;
             try { body = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+            const currentTask = collectTasks(queueDir, {}, undefined).find((item) => item.id === id);
+            if (!currentTask) { res.writeHead(404); return res.end("no such task"); }
             let existing = null;
             try { existing = findClosure(queueDir, id); }
             catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
-            const closeableStatuses = new Set(["review", "failed", "blocked"]);
-            if (!existing && !closeableStatuses.has(taskDisplayStatus(task))) {
+            const closeableStatuses = new Set(["review", "failed", "blocked", "publish_failed", "publish_unknown"]);
+            if (!existing && !closeableStatuses.has(taskDisplayStatus(currentTask))) {
               res.writeHead(409);
               return res.end("task status cannot be closed");
+            }
+            if (currentTask.approval && currentTask.approval.git_identity &&
+                !currentTask.approval.git_identity.restored_at) {
+              res.writeHead(409);
+              return res.end("Git identity has not been restored");
             }
             try {
               const closure = createClosure(queueDir, id, body && body.closed_by);
               return sendJson(res, closure.created ? 201 : 200, { ok: true, ...closure });
             } catch (error) {
               res.writeHead(400);
+              return res.end(String((error && error.message) || error));
+            }
+          }
+          if (m[2] === "retry-approval") {
+            let closure;
+            try { closure = findClosure(queueDir, id); }
+            catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
+            if (closure) { res.writeHead(409); return res.end("closed approval cannot be retried"); }
+            let existing;
+            try { existing = findApproval(queueDir, id); }
+            catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
+            if (!existing) { res.writeHead(404); return res.end("no such approval"); }
+            if (!["failed", "unknown"].includes(existing.status) || !existing.event.publish) {
+              res.writeHead(409);
+              return res.end("approval status cannot be retried");
+            }
+            try { return sendJson(res, 200, { ok: true, ...retryApproval(queueDir, id) }); }
+            catch (error) {
+              res.writeHead(error && error.code === "CODEX_SESSION_DELETED" ? 409 : 400);
               return res.end(String((error && error.message) || error));
             }
           }
@@ -194,6 +223,10 @@ function createServer(deps) {
           try { raw = await readBody(req, 4096); } catch (_) { res.writeHead(413); return res.end("body too large"); }
           let body;
           try { body = JSON.parse(raw); } catch (_) { res.writeHead(400); return res.end("bad json"); }
+          let closure;
+          try { closure = findClosure(queueDir, id); }
+          catch (error) { res.writeHead(400); return res.end(String((error && error.message) || error)); }
+          if (closure) { res.writeHead(409); return res.end("closed task cannot be approved"); }
           let task;
           try { task = JSON.parse(fs.readFileSync(doneFile, "utf8")); }
           catch (_) { res.writeHead(500); return res.end("bad task json"); }
@@ -201,7 +234,7 @@ function createServer(deps) {
             const approval = createApproval(queueDir, id, task, body && body.approved_by);
             return sendJson(res, approval.created ? 201 : 200, { ok: true, ...approval });
           } catch (error) {
-            res.writeHead(400);
+            res.writeHead(error && ["CODEX_SESSION_MISSING", "CODEX_SESSION_DELETED"].includes(error.code) ? 409 : 400);
             return res.end(String((error && error.message) || error));
           }
         }

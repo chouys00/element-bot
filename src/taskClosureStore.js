@@ -2,6 +2,8 @@
 const fs = require("fs");
 const path = require("path");
 const { ensureDir } = require("./fsUtils");
+const { acquireSessionLifecycleLock } = require("./sessionLifecycleLock");
+const { readCodexSession } = require("./codexSessionStore");
 
 const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
 
@@ -81,13 +83,24 @@ function createClosure(queueDir, taskId, closedBy, nowFn = () => new Date()) {
 }
 
 function reopenClosure(queueDir, taskId) {
-  const file = closurePath(queueDir, taskId);
+  const release = acquireSessionLifecycleLock(queueDir, taskId);
   try {
-    fs.unlinkSync(file);
-    return true;
-  } catch (error) {
-    if (error && error.code === "ENOENT") return false;
-    throw error;
+    const session = readCodexSession(path.join(queueDir, "work", taskId), taskId);
+    if (session && session.deleted_at) {
+      const error = new Error("Codex session 已超過保存期限並刪除，無法重新開啟");
+      error.code = "CODEX_SESSION_DELETED";
+      throw error;
+    }
+    const file = closurePath(queueDir, taskId);
+    try {
+      fs.unlinkSync(file);
+      return true;
+    } catch (error) {
+      if (error && error.code === "ENOENT") return false;
+      throw error;
+    }
+  } finally {
+    release();
   }
 }
 

@@ -83,6 +83,32 @@ function writePending(queueDir, id, value = task()) {
   {
     const queueDir = freshQueue();
     try {
+      writePending(queueDir, "a", task("D:\\GB\\waiting-project"));
+      writePending(queueDir, "b", task("D:\\GB\\ready-project"));
+      const seen = [];
+      const count = await pollOnce({
+        queueDir,
+        logger: silentLogger,
+        preflight: async (pendingTask) => pendingTask.project_path.includes("waiting-project")
+          ? { status: "waiting", reason: "同一專案的驗收推送尚未結案" }
+          : { status: "ready" },
+        executor: async (_task, context) => {
+          seen.push(context.id);
+          return { queueStatus: "done" };
+        },
+      });
+      assert.strictEqual(count, 1);
+      assert.deepStrictEqual(seen, ["b"], "前一筆等待時仍應處理其他可執行專案");
+      assert.ok(fs.existsSync(path.join(queueDir, "pending", "a.json")));
+      assert.ok(fs.existsSync(path.join(queueDir, "done", "b.json")));
+    } finally {
+      fs.rmSync(queueDir, { recursive: true, force: true });
+    }
+  }
+
+  {
+    const queueDir = freshQueue();
+    try {
       writePending(queueDir, "a", task(path.join(queueDir, "missing")));
       writePending(queueDir, "b");
       const notifications = [];

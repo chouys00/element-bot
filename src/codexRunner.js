@@ -22,6 +22,14 @@ const MODE_CONFIG = Object.freeze({
   },
 });
 
+const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function requireSessionId(value) {
+  const sessionId = String(value || "");
+  if (!SESSION_ID_PATTERN.test(sessionId)) throw new Error("Codex session ID 不合法");
+  return sessionId;
+}
+
 function defaultTimeoutMs(mode) {
   if (mode !== "execute") return 120000;
   const configured = parseInt(process.env.AI_TIMEOUT_MS || "1800000", 10);
@@ -45,12 +53,25 @@ function buildCodexArgs(mode, options = {}) {
   if (config.network && config.sandbox === "workspace-write") {
     args.push("-c", "sandbox_workspace_write.network_access=true");
   }
-  args.push(
-    "exec",
-    "--ephemeral",
-    "--sandbox", config.sandbox,
-    "--color", "never"
-  );
+  if (options.resumeSessionId) {
+    const sessionId = requireSessionId(options.resumeSessionId);
+    args.push(
+      "--sandbox", config.sandbox,
+      "exec",
+      "resume",
+      "--json",
+    );
+    if (options.outputSchemaPath) {
+      args.push("--output-schema", options.outputSchemaPath);
+    }
+    args.push(sessionId, "-");
+    return args;
+  }
+
+  args.push("exec");
+  if (options.persistSession) args.push("--json");
+  else args.push("--ephemeral");
+  args.push("--sandbox", config.sandbox, "--color", "never");
   if (options.outputSchemaPath) {
     args.push("--output-schema", options.outputSchemaPath);
   }
@@ -63,6 +84,35 @@ function diagnostic(stderr, stdout) {
     .filter(Boolean)
     .join(" | ")
     .slice(0, 500) || "無診斷輸出";
+}
+
+function parseCodexJsonl(stdout, expectedSessionId) {
+  const events = String(stdout || "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map((line, index) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        throw new Error(`Codex JSONL 第 ${index + 1} 行不合法: ${error.message}`);
+      }
+    });
+  const started = events.find((event) => event && event.type === "thread.started");
+  const sessionId = started && started.thread_id;
+  if (typeof sessionId !== "string" || !sessionId) {
+    throw new Error("Codex JSONL 缺少 thread.started session ID");
+  }
+  if (expectedSessionId && sessionId !== expectedSessionId) {
+    throw new Error(`Codex resume session ID 不一致: 預期 ${expectedSessionId}，實際 ${sessionId}`);
+  }
+  const messages = events.filter((event) =>
+    event && event.type === "item.completed" && event.item &&
+    event.item.type === "agent_message" && typeof event.item.text === "string");
+  if (!messages.length) throw new Error("Codex JSONL 缺少最終 agent message");
+  return {
+    output: messages[messages.length - 1].item.text,
+    sessionId,
+  };
 }
 
 function asBlocked(stage, error) {
@@ -326,8 +376,19 @@ async function runCodex(prompt, options = {}) {
       child.stdout.on("data", (chunk) => { stdout += chunk; });
       child.stderr.on("data", (chunk) => { stderr += chunk; });
       child.on("close", (code) => {
-        if (code === 0) finish(resolve, stdout);
-        else finish(reject, new Error(`Codex CLI exit ${code}: ${diagnostic(stderr, stdout)}`));
+        if (code !== 0) {
+          finish(reject, new Error(`Codex CLI exit ${code}: ${diagnostic(stderr, stdout)}`));
+          return;
+        }
+        if (options.persistSession || options.resumeSessionId) {
+          try {
+            finish(resolve, parseCodexJsonl(stdout, options.resumeSessionId));
+          } catch (error) {
+            finish(reject, error);
+          }
+          return;
+        }
+        finish(resolve, stdout);
       });
       child.stdin.write(String(prompt || ""));
       child.stdin.end();
@@ -337,8 +398,153 @@ async function runCodex(prompt, options = {}) {
   }
 }
 
+async function deleteCodexSession(sessionId, options = {}) {
+  sessionId = requireSessionId(sessionId);
+  const timeoutMs = options.timeoutMs || 15000;
+  const spawnFn = options.spawnFn || spawn;
+  const terminateFn = options.terminateFn || terminateProcessTree;
+  const pathExists = options.pathExists || (async (filePath) => {
+    try {
+      await fs.promises.access(filePath, fs.constants.F_OK);
+      return true;
+    } catch (error) {
+      if (error && error.code === "ENOENT") return false;
+      throw error;
+    }
+  });
+  const runtime = await preflightCodexRuntime({
+    command: options.command,
+    runtimeOps: options.runtimeOps,
+  });
+  return new Promise((resolve, reject) => {
+    const child = spawnFn(runtime.command, ["app-server", "--stdio"], {
+      cwd: options.cwd,
+      shell: false,
+      windowsHide: true,
+    });
+    const INITIALIZE_ID = 1;
+    const DELETE_ID = 2;
+    const READ_ID = 3;
+    let stdoutBuffer = "";
+    let stderr = "";
+    let deleteError = null;
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (child.stdin && !child.stdin.destroyed) child.stdin.end();
+      fn(value);
+    };
+    const rpcError = (value) => {
+      const message = value && value.message ? value.message : JSON.stringify(value || {});
+      return new Error(`Codex thread/delete 失敗: ${String(message).slice(0, 500)}`);
+    };
+    const send = (message) => {
+      if (settled) return;
+      child.stdin.write(`${JSON.stringify(message)}\n`);
+    };
+    const handleMessage = async (message) => {
+      if (!message || typeof message !== "object" || settled) return;
+      if (message.id === INITIALIZE_ID) {
+        if (message.error) {
+          finish(reject, rpcError(message.error));
+          return;
+        }
+        send({ method: "initialized", params: {} });
+        send({ method: "thread/delete", id: DELETE_ID, params: { threadId: sessionId } });
+        return;
+      }
+      if (message.id === DELETE_ID) {
+        if (!message.error) {
+          finish(resolve, { deleted: true, metadataDeleted: true });
+          return;
+        }
+        deleteError = rpcError(message.error);
+        send({
+          method: "thread/read",
+          id: READ_ID,
+          params: { threadId: sessionId, includeTurns: false },
+        });
+        return;
+      }
+      if (message.id !== READ_ID || !deleteError) return;
+      if (message.error) {
+        const readMessage = String(message.error.message || "");
+        if (/not found|missing|does not exist/i.test(readMessage)) {
+          finish(resolve, { deleted: true, metadataDeleted: true });
+        } else {
+          finish(reject, deleteError);
+        }
+        return;
+      }
+      const thread = message.result && message.result.thread;
+      const rolloutPath = thread && thread.path;
+      if (!thread || thread.id !== sessionId || typeof rolloutPath !== "string" ||
+          !path.basename(rolloutPath).includes(sessionId)) {
+        finish(reject, deleteError);
+        return;
+      }
+      try {
+        if (await pathExists(rolloutPath)) {
+          finish(reject, deleteError);
+          return;
+        }
+        finish(resolve, {
+          deleted: true,
+          metadataDeleted: false,
+          warning: deleteError.message,
+        });
+      } catch (error) {
+        finish(reject, new Error(`${deleteError.message}; 無法確認 rollout: ${error.message}`));
+      }
+    };
+    const timer = setTimeout(() => {
+      terminateFn(child);
+      finish(reject, new Error(`Codex session delete timeout(${timeoutMs}ms)`));
+    }, timeoutMs);
+    child.on("error", (error) => finish(reject, error));
+    child.stdin.on("error", (error) => finish(reject, error));
+    child.stdout.on("data", (chunk) => {
+      stdoutBuffer += chunk;
+      let newline;
+      while ((newline = stdoutBuffer.indexOf("\n")) >= 0) {
+        const line = stdoutBuffer.slice(0, newline).trim();
+        stdoutBuffer = stdoutBuffer.slice(newline + 1);
+        if (!line) continue;
+        let message;
+        try {
+          message = JSON.parse(line);
+        } catch (error) {
+          finish(reject, new Error(`Codex app-server JSONL 不合法: ${error.message}`));
+          return;
+        }
+        Promise.resolve(handleMessage(message)).catch((error) => finish(reject, error));
+      }
+    });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("close", (code) => {
+      if (!settled) {
+        finish(reject, new Error(`Codex app-server 提前結束(${code}): ${diagnostic(stderr, stdoutBuffer)}`));
+      }
+    });
+    send({
+      method: "initialize",
+      id: INITIALIZE_ID,
+      params: {
+        clientInfo: {
+          name: "element_bot",
+          title: "element-bot",
+          version: "1.0.0",
+        },
+      },
+    });
+  });
+}
+
 module.exports = {
   buildCodexArgs,
+  deleteCodexSession,
   defaultTimeoutMs,
   preflightCodexRuntime,
   runCodex,

@@ -43,7 +43,7 @@
   tr.task:hover { background: #1f232b; }
   tr.task.sel { background: #283041; }
   .badge { padding: 1px 8px; border-radius: 10px; color: #fff; font-size: 12px; }
-  .pending { background: #9ca3af; } .processing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed { background: #ef4444; } .blocked { background: #b45309; }
+  .pending, .publish_pending { background: #9ca3af; } .processing, .publishing { background: #3b82f6; } .review { background: #f59e0b; } .done { background: #22c55e; } .failed, .publish_failed { background: #ef4444; } .blocked, .publish_unknown { background: #b45309; }
   .closed { background: #475569; }
   .judging { background: #8b5cf6; } .rejected { background: #4b5563; } .judge_error { background: #b45309; }
   pre { background: #0f1115; padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
@@ -133,7 +133,7 @@
 
 <script src="/resizable.js"></script>
 <script>
-const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", done: "已完成", failed: "失敗", blocked: "受阻", closed: "已關閉", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
+const STATUS_LABEL = { pending: "待處理", processing: "進行中", review: "待驗收", publish_pending: "等待推送", publishing: "推送中", done: "已完成", publish_failed: "推送失敗", publish_unknown: "推送結果未知", failed: "失敗", blocked: "受阻", closed: "已關閉", judging: "LLM 判斷中", rejected: "LLM 不觸發", judge_error: "LLM 判斷失敗" };
 const APPROVER_KEY = "element-bot.approved-by";
 const COMPANY_ID_PATTERN = /^[A-Za-z]+\.[A-Za-z]+$/;
 const approverDisplay = document.getElementById("approverDisplay");
@@ -178,7 +178,14 @@ let lastDetailHtml = null;
 // judging = LLM 判斷進行中;judged = 已判完但沒觸發(拒絕或判斷失敗)。
 function underlyingStatus(t) {
   if (t.status === "done") {
-    if (t.approval) return "done";
+    if (t.approval) {
+      if (!t.approval.publish) return "done";
+      if (t.approval.status === "pending") return "publish_pending";
+      if (t.approval.status === "processing") return "publishing";
+      if (t.approval.status === "failed") return "publish_failed";
+      if (t.approval.status === "unknown") return "publish_unknown";
+      return "done";
+    }
     return t.verified ? "done" : "review";
   }
   if (t.status === "judged") return t.judge && t.judge.status === "error" ? "judge_error" : "rejected";
@@ -224,9 +231,9 @@ function renderStatus(s) {
   document.getElementById("botStatus").textContent = s.bot_online ? "🟢 bot 連線中" : "🔴 bot 離線";
   document.getElementById("matrixAccount").textContent = s.matrix_account_name || "未設定";
   const c = s.counts || {};
-  const active = (c.judging || 0) + (c.pending || 0) + (c.processing || 0);
+  const active = (c.judging || 0) + (c.pending || 0) + (c.processing || 0) + (c.publish_pending || 0) + (c.publishing || 0);
   const review = c.review || 0;
-  const issues = (c.blocked || 0) + (c.failed || 0);
+  const issues = (c.blocked || 0) + (c.failed || 0) + (c.publish_failed || 0) + (c.publish_unknown || 0);
   document.getElementById("counts").innerHTML =
     `<span>執行中 ${active}</span><span class="warn">待驗收 ${review}</span><span class="bad">異常 ${issues}</span>`;
 }
@@ -327,19 +334,39 @@ async function renderDetail() {
       (t.command ? `<div><span class="k">送出指令</span> <code>${esc(t.command)}</code></div>` : "")
     : "";
 
+  const publish = t.approval && t.approval.publish;
+  const publishText = publish
+    ? ({ pending: "等待處理", processing: "推送中", success: "成功", failed: "失敗", unknown: "無法確認" }[publish.status] || publish.status)
+    : (t.approval ? "舊資料未記錄推送結果" : "—");
+  const commitHtml = publish && publish.commit_id
+    ? `<div><span class="k">Commit</span> <code title="${esc(publish.commit_id)}">${esc(publish.commit_id.slice(0, 10))}</code> ${esc(publish.commit_subject || "")}</div>`
+    : "";
+  const remoteHtml = publish && publish.remote
+    ? `<div><span class="k">驗證遠端</span> <code>${esc(publish.remote)}/${esc(publish.branch || "")}</code></div>`
+    : "";
+  const identityWarningHtml = publish && publish.identity_mismatch
+    ? `<div style="color:#ff9d96">⚠ 實際 Committer ${esc(publish.committer_name || "—")} 與驗收人不一致</div>`
+    : "";
+  const publishErrorHtml = publish && publish.error
+    ? `<div style="color:#ff9d96"><span class="k">錯誤</span> ${esc(publish.error)}</div>`
+    : "";
   const approvalHtml = t.approval
-    ? `<div><span class="k">驗收人</span> ${esc(t.approval.approved_by || "—")}</div>` +
+    ? `<div><span class="k">推送結果</span> ${esc(publishText)}</div>` +
+      `<div><span class="k">驗收人</span> ${esc(t.approval.approved_by || "—")}</div>` +
       `<div><span class="k">驗收時間</span> ${timeFull(t.approval.approved_at)}</div>` +
-      `<div><span class="k">專案通知</span> ${esc(t.approval.message || "提交代碼並推送")}</div>`
+      commitHtml + remoteHtml +
+      (publish && publish.finished_at ? `<div><span class="k">完成時間</span> ${timeFull(publish.finished_at)}</div>` : "") +
+      identityWarningHtml + publishErrorHtml
     : "";
   const closureHtml = t.closure
     ? `<div><span class="k">關閉人員</span> ${esc(t.closure.closed_by || "—")}</div>` +
       `<div><span class="k">關閉時間</span> ${timeFull(t.closure.closed_at)}</div>`
     : "";
-  const closeable = ["review", "failed", "blocked"].includes(displayStatus(t));
+  const closeable = ["review", "failed", "blocked", "publish_failed", "publish_unknown"].includes(displayStatus(t));
   const actHtml = `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
     ${!t.closure && t.status === "done" && !t.verified && !t.approval ? `<button data-act="approve" class="abtn">✓ 驗收並推送</button>` : ""}
     ${!t.closure && t.status === "done" && t.verified && !t.approval ? `<span class="muted">✓ 已驗收</span>` : ""}
+    ${!t.closure && t.approval && ["failed", "unknown"].includes(t.approval.status) && t.approval.publish ? `<button data-act="retry-approval" class="abtn">重試提交／推送</button>` : ""}
     ${!t.closure && (t.status === "failed" || t.status === "blocked") ? `<button data-act="requeue" class="abtn">重跑</button>` : ""}
     ${closeable ? `<button data-act="close" class="abtn">設為已關閉</button>` : ""}
     ${t.closure ? `<button data-act="reopen" class="abtn">重新開啟</button>` : ""}

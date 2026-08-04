@@ -8,6 +8,7 @@ const { collectTasks, taskDisplayStatus } = require("../src/dashboard/aggregate"
 const { createApproval, findApproval, moveApproval } = require("../src/approvalStore");
 const { approvalExecutor, buildApprovalPrompt } = require("../src/executors/approvalExecutor");
 const { processApproval, recoverApprovals } = require("../src/approvalWorker");
+const { writeTaskSession } = require("./support/codexSessionFixture");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "element-bot-simple-approval-"));
 const queueDir = path.join(root, "queue");
@@ -21,6 +22,18 @@ const task = {
   source: {},
 };
 const silentLogger = { log() {}, error() {} };
+const gitVerification = {
+  preparePublishVerification: async () => ({
+    before_head: "a".repeat(40), remote: "origin", branch: "main",
+  }),
+  verifyPublishedCommit: async () => ({
+    status: "success",
+    commit_id: "b".repeat(40),
+    commit_subject: "修改：完成簡化驗收",
+    committer_name: "patrick.zyx",
+    identity_mismatch: false,
+  }),
+};
 
 function git(args) {
   const result = spawnSync("git", args, { cwd: projectPath, encoding: "utf8", windowsHide: true });
@@ -43,6 +56,7 @@ function approvalFile(status, id) {
     const before = collectTasks(queueDir, {}, 10)[0];
     assert.strictEqual(taskDisplayStatus(before), "review");
 
+    writeTaskSession(queueDir, taskId);
     const created = createApproval(
       queueDir,
       taskId,
@@ -54,8 +68,8 @@ function approvalFile(status, id) {
 
     const accepted = collectTasks(queueDir, {}, 10)[0];
     assert.strictEqual(accepted.approval.status, "pending");
-    assert.strictEqual(accepted.verified, true);
-    assert.strictEqual(taskDisplayStatus(accepted), "done", "建立通知事件後任務必須立即完成");
+    assert.strictEqual(accepted.verified, false);
+    assert.strictEqual(taskDisplayStatus(accepted), "publish_pending", "建立通知事件後必須等待推送結果");
 
     const prompt = buildApprovalPrompt(created.event);
     assert.ok(prompt.includes("通知內容：提交代碼並推送"));
@@ -79,16 +93,22 @@ function approvalFile(status, id) {
       logger: silentLogger,
       nowFn: () => new Date("2026-07-27T03:00:00.000Z"),
       executor: async () => ({ delivered: true, output: "收到" }),
+      gitVerification,
     });
     assert.strictEqual(status, "done");
     assert.strictEqual(findApproval(queueDir, taskId).event.delivered_at, "2026-07-27T03:00:00.000Z");
 
     const failureId = "delivery-failure";
+    writeTaskSession(queueDir, failureId);
     const failedCreated = createApproval(queueDir, failureId, task, "patrick.zyx");
     const failedStatus = await processApproval(approvalFile("pending", failureId), {
       queueDir,
       logger: silentLogger,
       executor: async () => { throw new Error("Codex 無法啟動"); },
+      gitVerification: {
+        ...gitVerification,
+        verifyPublishedCommit: async () => ({ status: "failed", error: "遠端尚未更新" }),
+      },
     });
     assert.strictEqual(failedStatus, "failed");
     assert.strictEqual(findApproval(queueDir, failureId).status, "failed");
@@ -97,19 +117,20 @@ function approvalFile(status, id) {
     assert.strictEqual(failedCreated.event.message, "提交代碼並推送");
 
     const recoveryId = "interrupted-delivery";
+    writeTaskSession(queueDir, recoveryId);
     createApproval(queueDir, recoveryId, task, "patrick.zyx");
     moveApproval(queueDir, "pending", "processing", recoveryId);
-    assert.strictEqual(await recoverApprovals(queueDir, silentLogger), 1);
+    assert.strictEqual(await recoverApprovals(queueDir, silentLogger, () => new Date(), { gitVerification }), 1);
     assert.strictEqual(findApproval(queueDir, recoveryId).status, "done");
     assert.ok(!fs.existsSync(approvalFile("pending", recoveryId)), "中斷事件不可重新傳送");
 
     const dashboardSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard", "public", "index.html"), "utf8");
     const serverSource = fs.readFileSync(path.join(__dirname, "..", "src", "dashboard", "server.js"), "utf8");
-    assert.ok(!dashboardSource.includes("publish-retry"));
-    assert.ok(!dashboardSource.includes('publishing: "提交中"'));
-    assert.ok(!serverSource.includes("retryApproval"));
+    assert.ok(dashboardSource.includes("retry-approval"));
+    assert.ok(dashboardSource.includes('publishing: "推送中"'));
+    assert.ok(serverSource.includes("retryApproval"));
 
-    console.log("simpleApprovalFlow.test.js: 簡化驗收與單向通知流程通過 ✅");
+    console.log("simpleApprovalFlow.test.js: 驗收等待、推送驗證與手動重試流程通過 ✅");
   } finally {
     fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
   }

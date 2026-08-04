@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
+const { findClosure } = require("./taskClosureStore");
 
 const GIT_TIMEOUT_MS = 10000;
 
@@ -32,6 +33,34 @@ function gitErrorMessage(error) {
   return String((error && (error.gitStderr || error.message)) || error || "未知錯誤").trim();
 }
 
+function comparablePath(value) {
+  const resolved = path.resolve(String(value || ""));
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function openApprovalForProject(queueDir, projectPath) {
+  if (!queueDir) return null;
+  const target = comparablePath(projectPath);
+  for (const status of ["pending", "processing", "failed", "unknown"]) {
+    let files;
+    try {
+      files = fs.readdirSync(path.join(queueDir, "approvals", status)).filter((file) => file.endsWith(".json"));
+    } catch (_) {
+      continue;
+    }
+    for (const file of files) {
+      const taskId = file.replace(/\.json$/, "");
+      try {
+        if (findClosure(queueDir, taskId)) continue;
+        const event = JSON.parse(fs.readFileSync(path.join(queueDir, "approvals", status, file), "utf8"));
+        if (!event.publish) continue;
+        if (comparablePath(event.project_path) === target) return { taskId, status };
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
 async function checkProjectGit(task, deps = {}) {
   const rawPath = String((task && task.project_path) || "").trim();
   if (!rawPath || /[\u0000-\u001f\u007f]/.test(rawPath)) {
@@ -51,6 +80,14 @@ async function checkProjectGit(task, deps = {}) {
     return blocked(`無法讀取 project_path: ${projectPath}`);
   }
   if (!stat.isDirectory()) return blocked(`project_path 不是目錄: ${projectPath}`);
+
+  const openApproval = openApprovalForProject(deps.queueDir, projectPath);
+  if (openApproval) {
+    return {
+      status: "waiting",
+      reason: `同一專案的驗收推送尚未結案（${openApproval.taskId}）`,
+    };
+  }
 
   const git = deps.runGit || runGit;
   let inside;

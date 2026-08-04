@@ -3,11 +3,13 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { readCodexSession, writeCodexSession } = require("../src/codexSessionStore");
 const {
   APPROVAL_STATUSES,
   createApproval,
   findApproval,
   moveApproval,
+  retryApproval,
   validateApprovalEvent,
   writeApproval,
 } = require("../src/approvalStore");
@@ -24,6 +26,11 @@ const task = {
 try {
   fs.mkdirSync(projectPath, { recursive: true });
   fs.mkdirSync(path.join(queueDir, "work", "task-1", "workspace"), { recursive: true });
+  writeCodexSession(path.join(queueDir, "work", "task-1"), {
+    task_id: "task-1",
+    session_id: "0199a213-81c0-7800-8aa1-bbab2a035a53",
+    created_at: "2026-07-21T00:00:00.000Z",
+  });
 
   assert.deepStrictEqual(APPROVAL_STATUSES, ["pending", "processing", "done", "failed", "unknown"]);
 
@@ -43,7 +50,9 @@ try {
     approved_by: "patrick.zyx",
     approved_at: "2026-07-21T01:02:03.000Z",
     message: "提交代碼並推送",
+    codex_session_id: "0199a213-81c0-7800-8aa1-bbab2a035a53",
     attempt: 0,
+    publish: { status: "pending" },
   });
   assert.ok(!Object.prototype.hasOwnProperty.call(first.event, "workspace_path"));
   assert.ok(fs.existsSync(path.join(queueDir, "approvals", "pending", "task-1.json")));
@@ -92,6 +101,34 @@ try {
   };
   assert.strictEqual(validateApprovalEvent(queueDir, withGitIdentity, "task-1"), withGitIdentity);
   assert.throws(() => validateApprovalEvent(queueDir, {
+    ...first.event,
+    publish: { status: "bogus" },
+  }, "task-1"), /publish.status/);
+  const publishedEvent = {
+    ...first.event,
+    publish: {
+      status: "success",
+      before_head: "a".repeat(40),
+      remote: "origin",
+      branch: "main",
+      started_at: "2026-07-21T01:03:00.000Z",
+      commit_id: "b".repeat(40),
+      commit_subject: "修改：完成驗收推送",
+      committer_name: "patrick.zyx",
+      identity_mismatch: false,
+      finished_at: "2026-07-21T01:04:00.000Z",
+    },
+  };
+  assert.strictEqual(validateApprovalEvent(queueDir, publishedEvent, "task-1"), publishedEvent);
+  assert.throws(() => validateApprovalEvent(queueDir, {
+    ...publishedEvent,
+    publish: { ...publishedEvent.publish, commit_id: "" },
+  }, "task-1"), /publish.commit_id/);
+  assert.throws(() => validateApprovalEvent(queueDir, {
+    ...publishedEvent,
+    publish: { ...publishedEvent.publish, remote: "bad\nremote" },
+  }, "task-1"), /publish.remote/);
+  assert.throws(() => validateApprovalEvent(queueDir, {
     ...withGitIdentity,
     git_identity: { ...withGitIdentity.git_identity, previous_local_name_present: "no" },
   }, "task-1"), /git_identity/);
@@ -109,7 +146,71 @@ try {
   assert.throws(() => createApproval(queueDir, "missing-path", { ...task, project_path: path.join(root, "missing") }, "patrick.zyx"), /project_path/);
   assert.throws(() => createApproval(queueDir, "no-branch", { ...task, target_branch: "" }, "patrick.zyx"), /target_branch/);
   assert.throws(() => createApproval(queueDir, "bad-branch", { ...task, target_branch: "main\nnext" }, "patrick.zyx"), /target_branch/);
+  assert.throws(
+    () => createApproval(queueDir, "missing-session", task, "patrick.zyx"),
+    /Codex session|重新執行/,
+  );
   assert.throws(() => writeApproval(queueDir, "bogus", first.event), /approval status/);
+
+  writeCodexSession(path.join(queueDir, "work", "retry-task"), {
+    task_id: "retry-task",
+    session_id: "0199a213-81c0-7800-8aa1-bbab2a035a54",
+    created_at: "2026-07-21T00:00:00.000Z",
+  });
+  const retryCreated = createApproval(queueDir, "retry-task", task, "patrick.zyx");
+  const retryEvent = {
+    ...retryCreated.event,
+    attempt: 1,
+    last_error: "遠端暫時無法連線",
+    publish: {
+      status: "unknown",
+      before_head: "a".repeat(40),
+      remote: "origin",
+      branch: "main",
+      error: "遠端暫時無法連線",
+      finished_at: "2026-07-21T03:00:00.000Z",
+    },
+  };
+  writeApproval(queueDir, "pending", retryEvent);
+  moveApproval(queueDir, "pending", "unknown", "retry-task");
+  const retried = retryApproval(queueDir, "retry-task");
+  assert.strictEqual(retried.status, "pending");
+  assert.strictEqual(retried.event.approved_by, "patrick.zyx");
+  assert.strictEqual(retried.event.codex_session_id, "0199a213-81c0-7800-8aa1-bbab2a035a54");
+  assert.strictEqual(retried.event.attempt, 1);
+  assert.strictEqual(retried.event.publish.status, "pending");
+  assert.strictEqual(retried.event.publish.before_head, "a".repeat(40));
+  assert.strictEqual(retried.event.publish.error, undefined);
+  assert.strictEqual(retried.event.publish.finished_at, undefined);
+  assert.strictEqual(retried.event.last_error, "遠端暫時無法連線");
+  assert.strictEqual(findApproval(queueDir, "retry-task").status, "pending");
+
+  const deletedSessionTaskId = "deleted-session-task";
+  const deletedSessionId = "0199a213-81c0-7800-8aa1-bbab2a035a55";
+  writeCodexSession(path.join(queueDir, "work", deletedSessionTaskId), {
+    task_id: deletedSessionTaskId,
+    session_id: deletedSessionId,
+    created_at: "2026-07-01T00:00:00.000Z",
+    deleted_session_ids: [deletedSessionId],
+    deleted_at: "2026-08-01T00:00:00.000Z",
+  });
+  assert.throws(
+    () => createApproval(queueDir, deletedSessionTaskId, task, "patrick.zyx"),
+    (error) => error && error.code === "CODEX_SESSION_DELETED",
+  );
+
+  writeApproval(queueDir, "pending", { ...retryEvent, publish: { ...retryEvent.publish } });
+  moveApproval(queueDir, "pending", "unknown", "retry-task");
+  writeCodexSession(path.join(queueDir, "work", "retry-task"), {
+    ...readCodexSession(path.join(queueDir, "work", "retry-task"), "retry-task"),
+    deleted_session_ids: ["0199a213-81c0-7800-8aa1-bbab2a035a54"],
+    deleted_at: "2026-08-01T00:00:00.000Z",
+  });
+  assert.throws(
+    () => retryApproval(queueDir, "retry-task"),
+    (error) => error && error.code === "CODEX_SESSION_DELETED",
+  );
+  assert.throws(() => retryApproval(queueDir, "task-1"), /failed.*unknown|不能重試/);
 
   console.log("approvalStore.test.js: 驗收通知 outbox 儲存層通過 ✅");
 } finally {

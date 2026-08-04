@@ -4,6 +4,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
+const { createApproval } = require("../src/approvalStore");
+const { createClosure } = require("../src/taskClosureStore");
+const { writeTaskSession } = require("./support/codexSessionFixture");
 
 let checkProjectGit;
 try {
@@ -36,6 +39,51 @@ const repo = path.join(root, "repo");
       projectPath: path.resolve(repo),
       branch: "main",
     });
+
+    const queueDir = path.join(root, "queue");
+    writeTaskSession(queueDir, "publishing-task");
+    createApproval(queueDir, "publishing-task", {
+      task: "skill-dispatch",
+      project_path: repo,
+      target_branch: "main",
+    }, "patrick.zyx");
+    const gated = await checkProjectGit(
+      { project_path: repo, target_branch: "main" },
+      { queueDir, id: "next-task" },
+    );
+    assert.strictEqual(gated.status, "waiting");
+    assert.match(gated.reason, /同一專案.*推送.*尚未結案/);
+
+    const otherRepo = path.join(root, "other-repo");
+    fs.mkdirSync(otherRepo, { recursive: true });
+    git(["init", "-q", "-b", "main"], otherRepo);
+    git(["config", "user.name", "element-bot test"], otherRepo);
+    git(["config", "user.email", "element-bot-test@example.invalid"], otherRepo);
+    fs.writeFileSync(path.join(otherRepo, "baseline.txt"), "baseline\n", "utf8");
+    git(["add", "baseline.txt"], otherRepo);
+    git(["commit", "-q", "-m", "test: baseline"], otherRepo);
+    const otherProject = await checkProjectGit(
+      { project_path: otherRepo, target_branch: "main" },
+      { queueDir, id: "other-task" },
+    );
+    assert.strictEqual(otherProject.status, "ready", "其他專案不應被驗收推送擋住");
+
+    createClosure(queueDir, "publishing-task", "patrick.zyx");
+    fs.mkdirSync(path.join(queueDir, "approvals", "failed"), { recursive: true });
+    fs.writeFileSync(path.join(queueDir, "approvals", "failed", "legacy-failed.json"), JSON.stringify({
+      task_id: "legacy-failed",
+      project_path: repo,
+      target_branch: "main",
+      approved_by: "patrick.zyx",
+      approved_at: "2026-07-21T02:00:00.000Z",
+      message: "提交代碼",
+      attempt: 1,
+    }), "utf8");
+    const released = await checkProjectGit(
+      { project_path: repo, target_branch: "main" },
+      { queueDir, id: "next-task" },
+    );
+    assert.strictEqual(released.status, "ready", "沒有 publish 的歷史失敗事件不得永久阻擋專案");
 
     fs.writeFileSync(path.join(repo, "dirty.txt"), "dirty\n", "utf8");
     const dirty = await checkProjectGit({ project_path: repo, target_branch: "main" });

@@ -54,7 +54,7 @@ function collectTasks(queueDir, roomsMap, limit) {
         body: src.body,
         event_id: src.event_id,
         enqueued_at: task.enqueued_at,
-        verified: isVerified(queueDir, id) || !!approval,
+        verified: isVerified(queueDir, id) || !!(approval && (approval.status === "done" || !approval.event.publish)),
         ...(approval ? { approval: { status: approval.status, ...approval.event } } : {}),
         ...(closure ? { closure } : {}),
         ...(task.judge ? { judge: task.judge } : {}),
@@ -74,13 +74,13 @@ function collectTasks(queueDir, roomsMap, limit) {
 function statusCounts(queueDir) {
   const counts = {
     judging: 0, judged: 0, pending: 0, processing: 0, done: 0, failed: 0, blocked: 0, review: 0,
+    publish_pending: 0, publishing: 0, publish_failed: 0, publish_unknown: 0,
     unverified: 0, closed: 0,
   };
   let unverifiedDone = 0;
   for (const status of STATUS_DIRS) {
     try {
       const files = fs.readdirSync(path.join(queueDir, status)).filter((f) => f.endsWith(".json"));
-      counts[status] = 0;
       for (const file of files) {
         const id = file.replace(/\.json$/, "");
         let closure = null;
@@ -90,32 +90,38 @@ function statusCounts(queueDir) {
           counts.closed++;
           continue;
         }
-        counts[status]++;
-      }
-      if (status === "done") {
-        for (const file of files) {
-          const id = file.replace(/\.json$/, "");
-          let closure = null;
-          try { closure = findClosure(queueDir, id); }
-          catch (_) {}
-          if (closure) continue;
-          let accepted = false;
-          try { accepted = !!findApproval(queueDir, id); }
-          catch (_) { accepted = true; }
-          if (!accepted && !isVerified(queueDir, id)) unverifiedDone++;
+        if (status !== "done") {
+          counts[status]++;
+          continue;
         }
+        let approval = null;
+        try { approval = findApproval(queueDir, id); }
+        catch (_) { approval = { status: "unknown", event: {} }; }
+        const display = taskDisplayStatus({
+          status: "done",
+          verified: isVerified(queueDir, id) || !!(approval && (approval.status === "done" || !approval.event.publish)),
+          ...(approval ? { approval: { status: approval.status, ...approval.event } } : {}),
+        });
+        counts[display] = (counts[display] || 0) + 1;
+        if (display === "review") unverifiedDone++;
       }
     } catch (_) {}
   }
   counts.unverified = unverifiedDone;
-  counts.review += unverifiedDone;
   return counts;
 }
 
 function taskDisplayStatus(task) {
   if (task.closure) return "closed";
   if (task.status === "done") {
-    if (task.approval) return "done";
+    if (task.approval) {
+      if (!task.approval.publish) return "done";
+      if (task.approval.status === "pending") return "publish_pending";
+      if (task.approval.status === "processing") return "publishing";
+      if (task.approval.status === "failed") return "publish_failed";
+      if (task.approval.status === "unknown") return "publish_unknown";
+      return "done";
+    }
     return task.verified ? "done" : "review";
   }
   if (task.status === "judged") return task.judge && task.judge.status === "error" ? "judge_error" : "rejected";
