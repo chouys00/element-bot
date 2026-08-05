@@ -63,7 +63,12 @@ function readBody(req, limit = 1024 * 1024) {
   });
 }
 
-const CONTENT_TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css" };
+const CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+};
 
 // deps = { queueDir, storageDir, outputFile, rulesPath, envRoomIds, matrixUserId, judgeFn }
 // judgeFn 可注入以利測試(預設用真 judge,會呼叫 Codex CLI)。

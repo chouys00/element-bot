@@ -70,6 +70,15 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
   const html = await fetch(`${base}/`);
   ok("根路徑回 200", html.status === 200);
   const htmlText = await html.text();
+  ok("dashboard 使用 SVG favicon",
+    htmlText.includes('<link rel="icon" type="image/svg+xml" href="/element-bot-icon.svg" />'));
+  ok("dashboard 標頭顯示 app icon",
+    htmlText.includes('<img class="app-icon" src="/element-bot-icon.svg" alt="" aria-hidden="true" />'));
+  const iconResponse = await fetch(`${base}/element-bot-icon.svg`);
+  const iconText = await iconResponse.text();
+  ok("app icon 可由 dashboard 提供", iconResponse.status === 200);
+  ok("app icon 使用 SVG MIME", iconResponse.headers.get("content-type") === "image/svg+xml");
+  ok("app icon 回傳有效 SVG", /<svg\b[\s\S]*<\/svg>/.test(iconText));
   ok("dashboard 支援 blocked 狀態", htmlText.includes('blocked: "受阻"'));
   const durationFunctionSource = (htmlText.match(/function formatDuration\(ms\) \{[\s\S]*?\n\}/) || [])[0];
   ok(
@@ -148,6 +157,10 @@ function ok(name, cond) { assert.ok(cond, name); passed++; }
     (fullHtmlSource.match(/aiHtml/g) || []).length === 1);
 
   const rulesHtmlText = await (await fetch(`${base}/rules.html`)).text();
+  ok("規則設定使用 SVG favicon",
+    rulesHtmlText.includes('<link rel="icon" type="image/svg+xml" href="/element-bot-icon.svg" />'));
+  ok("規則設定標頭顯示 app icon",
+    rulesHtmlText.includes('<img class="app-icon" src="/element-bot-icon.svg" alt="" aria-hidden="true" />'));
   ok("規則頁可設定 target_branch", rulesHtmlText.includes('id="f_target_branch"'));
   ok("專案健檢 UI 只顯示路徑存在與是目錄",
     rulesHtmlText.includes("路徑存在") && rulesHtmlText.includes("是目錄") &&

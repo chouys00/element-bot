@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>element-bot 監控台</title>
+<link rel="icon" type="image/svg+xml" href="/element-bot-icon.svg" />
 <style>
   :root { color-scheme: dark; }
   * { scrollbar-width: thin; scrollbar-color: #2a2d36 transparent; }
@@ -14,6 +15,7 @@
   html, body { height: 100%; margin: 0; overflow: hidden; display: flex; flex-direction: column; }
   body { font-family: system-ui, "Microsoft JhengHei", sans-serif; background: #16181d; color: #e6e6e6; font-size: 14px; }
   header { flex-shrink: 0; padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2c2f38; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  header .app-icon { display: block; width: 24px; height: 24px; flex: 0 0 24px; }
   header .dot { font-weight: bold; }
   header .counts { display: flex; gap: 7px; flex-wrap: wrap; }
   header .counts span { color: #c8ced8; background: #252932; border: 1px solid #343a45; border-radius: 999px; padding: 3px 9px; white-space: nowrap; }
@@ -55,6 +57,7 @@
 </head>
 <body>
 <header>
+  <img class="app-icon" src="/element-bot-icon.svg" alt="" aria-hidden="true" />
   <span class="dot" id="botStatus">…</span>
   <span class="muted">Matrix：<span id="matrixAccount" style="font-family:monospace">—</span></span>
   <span class="counts" id="counts"></span>
